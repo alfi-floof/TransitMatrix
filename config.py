@@ -4,7 +4,7 @@ from enum import IntEnum
 # ==========================
 # EINSTELLUNGEN
 # ==========================
-STATION_NAME = "Timmaspe Ortsmitte"
+STATION_NAME = ""
 STATION_ID = ""
 DATA_SOURCE = "HVV"
 # später: DATA_SOURCE = "HVV"
@@ -13,7 +13,7 @@ DATA_SOURCE = "HVV"
 # ==========================
 # AUSGABE
 # ==========================
-DISPLAY_MODE = "LED"
+DISPLAY_MODE = "WINDOW"
 # "WINDOW" = PC Desktop Vorschau
 # "LED" = echte RGB LED Matrix über GPIO
 
@@ -25,9 +25,12 @@ HVV_API_URL = "https://gti.geofox.de"
 # DB TIMETABLES API
 # ==========================
 DB_API_URL = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
+DB_STATION_EVA = ""
 
 # DB Timetables lookup cache lifetime in seconds
 DB_CACHE_TIME = 3600
+DB_CACHE_TIME = 300
+DB_FCHG_CACHE_TIME = 30
 
 DATA_UPDATE = 20
 
