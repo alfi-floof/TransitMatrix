@@ -783,5 +783,6 @@ credentials.py
 .venv/
 __pycache__/
 BackUp/
+db_timetable*.xml
 *.pyc
 .env

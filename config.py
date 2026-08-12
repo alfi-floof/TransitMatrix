@@ -4,8 +4,8 @@ from enum import IntEnum
 # ==========================
 # EINSTELLUNGEN
 # ==========================
-STATION_NAME = ""
-STATION_ID = ""
+STATION_NAME = "Frankfurt (Main) Hbf"
+STATION_ID = "8000105"
 DATA_SOURCE = "HVV"
 # später: DATA_SOURCE = "HVV"
 # "HVV" = API | "WEB" = Scraping
@@ -25,7 +25,7 @@ HVV_API_URL = "https://gti.geofox.de"
 # DB TIMETABLES API
 # ==========================
 DB_API_URL = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
-DB_STATION_EVA = ""
+DB_STATION_EVA = "8000105"
 
 # DB Timetables lookup cache lifetime in seconds
 DB_CACHE_TIME = 3600
