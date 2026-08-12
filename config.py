@@ -4,7 +4,7 @@ from enum import IntEnum
 # ==========================
 # EINSTELLUNGEN
 # ==========================
-STATION_NAME = "Timmaspe Ortsmitte"
+STATION_NAME = ""
 STATION_ID = ""
 DATA_SOURCE = "HVV"
 # später: DATA_SOURCE = "HVV"
