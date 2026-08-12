@@ -4,8 +4,8 @@ from enum import IntEnum
 # ==========================
 # EINSTELLUNGEN
 # ==========================
-STATION_NAME = "Hamburg Hbf"
-STATION_ID = "8002549" #EVA Station ID for ICE MATCH
+STATION_NAME = ""
+STATION_ID = "" #EVA Station ID for ICE MATCH
 DATA_SOURCE = "HVV"
 # später: DATA_SOURCE = "HVV"
 # "HVV" = API | "WEB" = Scraping
@@ -25,11 +25,10 @@ HVV_API_URL = "https://gti.geofox.de"
 # DB TIMETABLES API
 # ==========================
 DB_API_URL = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
-DB_STATION_EVA = "8000105"
+DB_STATION_EVA = ""
 
 # DB Timetables lookup cache lifetime in seconds
 DB_CACHE_TIME = 3600
-DB_CACHE_TIME = 300
 DB_FCHG_CACHE_TIME = 30
 
 DATA_UPDATE = 20
@@ -107,21 +106,6 @@ HEX_COLORS = {
     ColorCode.WHITE:   "#FFFFFF",
     ColorCode.MESSAGE: "#FF0000",
     ColorCode.FLX:     "#73D700",
-}
-
-STATION_EVA_MAP = {
-    "HAMBURG HBF": "8002549",
-    "HAMBURG-HARBURG": "8000147",
-    "HAMBURG-DAMMTOR": "8002548",
-    "ELMSHORN": "8000092",
-    "NEUMÜNSTER": "8000273",
-    "KIEL HBF": "8000199",
-    "BERLIN HBF": "8011160",
-    "BREMEN HBF": "8000050",
-    "HANNOVER HBF": "8000152",
-    "MÜNCHEN HBF": "8000261",
-    "ERFURT HBF": "8010101",
-    "ROSTOCK HBF": "8010304"
 }
 
 if __name__ == "__main__":

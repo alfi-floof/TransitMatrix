@@ -910,41 +910,41 @@ def parse_db_train_by_time(
     data,
     category,
     planned_departure,
+    destination=None,
     time_tolerance_minutes=1
 ):
     """
     Find a DB train by category and departure time.
+
+    Category and departure time are mandatory.
+    Destination is used as an additional preference when available.
 
     Returns:
         "ICE 1234"
         "IC 1234"
         "DPF 1234"
 
-    or None if no matching train was found.
+    or None if no suitable train was found.
     """
 
     if not data:
         return None
 
     try:
-
         root = ET.fromstring(data)
 
     except Exception as e:
-
         print(
             "DB Timetable XML Fehler:",
             repr(e)
         )
-
         return None
 
-    wanted_category = normalize(
-        category
-    ).upper()
+    wanted_category = normalize(category).upper()
+    wanted_destination = normalize(destination or "").upper()
 
     best_match = None
-    best_difference = None
+    best_score = None
 
     for element in root.iter():
 
@@ -995,17 +995,23 @@ def parse_db_train_by_time(
         if not train_number:
             continue
 
+        # ==========================================
+        # 1. CATEGORY MUST MATCH
+        # ==========================================
+
         if train_category != wanted_category:
             continue
 
-        # Prefer departure information.
+        # ==========================================
+        # 2. DEPARTURE MUST EXIST
+        # ==========================================
+
         event = dp if dp is not None else ar
 
         if event is None:
             continue
 
-        # Prefer changed time if present.
-        # Otherwise use planned time.
+        # Prefer changed time, otherwise planned time
         db_time = (
             event.get("ct", "").strip()
             or event.get("pt", "").strip()
@@ -1015,17 +1021,19 @@ def parse_db_train_by_time(
             continue
 
         try:
-
             db_departure = datetime.strptime(
                 db_time,
                 "%y%m%d%H%M"
             )
 
         except ValueError:
-
             continue
 
-        difference = abs(
+        # ==========================================
+        # 3. TIME MUST MATCH
+        # ==========================================
+
+        difference_seconds = abs(
             (
                 db_departure -
                 planned_departure
@@ -1033,21 +1041,97 @@ def parse_db_train_by_time(
         )
 
         difference_minutes = (
-            difference / 60
+            difference_seconds / 60
         )
 
-        if (
-            difference_minutes
-            > time_tolerance_minutes
-        ):
+        if difference_minutes > time_tolerance_minutes:
             continue
 
-        if (
-            best_difference is None
-            or difference < best_difference
-        ):
+        # ==========================================
+        # 4. DESTINATION MATCH
+        # ==========================================
 
-            best_difference = difference
+        destination_match = False
+
+        if wanted_destination:
+
+            # Search destination information inside
+            # this timetable entry.
+            db_destination_parts = []
+
+            for child in element.iter():
+
+                child_tag = (
+                    child.tag
+                    .split("}")[-1]
+                    .lower()
+                )
+
+                text = (
+                    child.text.strip()
+                    if child.text
+                    else ""
+                )
+
+                if not text:
+                    continue
+
+                if child_tag in (
+                    "n",
+                    "name",
+                    "eva",
+                    "ext",
+                    "arr",
+                    "dep",
+                    "dp",
+                    "destination"
+                ):
+                    db_destination_parts.append(
+                        normalize(text).upper()
+                    )
+
+            db_destination_text = " ".join(
+                db_destination_parts
+            )
+
+            if wanted_destination in db_destination_text:
+                destination_match = True
+
+            else:
+                # Also allow partial matching.
+                destination_words = [
+                    word
+                    for word in wanted_destination.split()
+                    if len(word) >= 4
+                ]
+
+                if destination_words and all(
+                    word in db_destination_text
+                    for word in destination_words
+                ):
+                    destination_match = True
+
+        # ==========================================
+        # 5. SCORE THE MATCH
+        # ==========================================
+
+        # Smaller score = better match.
+        #
+        # Destination match gets priority,
+        # then the smallest time difference.
+
+        destination_score = (
+            0 if destination_match else 1
+        )
+
+        score = (
+            destination_score,
+            difference_seconds
+        )
+
+        if best_score is None or score < best_score:
+
+            best_score = score
 
             best_match = (
                 f"{train_category} "
@@ -1060,6 +1144,7 @@ def parse_db_change_by_time(
     data,
     category,
     planned_departure,
+    destination=None,
     time_tolerance_minutes=3
 ):
     """
@@ -1207,7 +1292,8 @@ def parse_db_change_by_time(
 def lookup_db_train_by_time(
     category,
     station_name,
-    planned_departure
+    planned_departure,
+    destination=None
 ):
     """
     Look up an IC/ICE/DPF train using DB Timetables.
@@ -1223,6 +1309,7 @@ def lookup_db_train_by_time(
     cache_key = (
         normalize(category),
         normalize(station_name),
+        normalize(destination or ""),
         planned_departure.strftime(
             "%y%m%d%H%M"
         )
@@ -1273,7 +1360,8 @@ def lookup_db_train_by_time(
     result = parse_db_train_by_time(
         data,
         category,
-        planned_departure
+        planned_departure,
+        destination=destination
     )
 
     if result:
@@ -1303,7 +1391,8 @@ def lookup_db_train_by_time(
         result = parse_db_train_by_time(
             data,
             category,
-            planned_departure
+            planned_departure,
+            destination=destination
         )
 
     # ==================================================
@@ -1326,7 +1415,8 @@ def lookup_db_train_by_time(
         result = parse_db_train_by_time(
             data,
             category,
-            planned_departure
+            planned_departure,
+            destination=destination
         )
 
     # ==================================================
@@ -1348,7 +1438,8 @@ def lookup_db_train_by_time(
         result = parse_db_change_by_time(
             change_data,
             category,
-            planned_departure
+            planned_departure,
+            destination=destination
         )
 
         if result:
@@ -1483,7 +1574,8 @@ def get_hvv_data():
                 db_name = lookup_db_train_by_time(
                     category=line_name,
                     station_name=config.STATION_NAME,
-                    planned_departure=planned_departure
+                    planned_departure=planned_departure,
+                    destination=line_direction
                 )
 
                 if db_name:
@@ -1516,58 +1608,6 @@ def is_long_distance_train(line):
         r"(ICE|IC|DPF)\s*\d+",
         line
     ))
-
-
-def get_db_station_eva(station_name):
-    if not station_name:
-        return None
-
-    clean_name = station_name.strip()
-    norm_search = normalize(clean_name).upper()
-
-    # 1. READ DIRECTLY FROM CONFIG.PY
-    # Checks if STATIONS / KNOWN_STATIONS / STATION_EVA exists in config
-    for config_attr in ["STATION_EVA_MAP"]:
-        station_dict = getattr(config, config_attr, None)
-        if isinstance(station_dict, dict):
-            # Check exact key match
-            if clean_name in station_dict:
-                return str(station_dict[clean_name])
-
-            # Check case-insensitive / normalized match
-            for key, val in station_dict.items():
-                if normalize(str(key)).upper() == norm_search:
-                    return str(val)
-
-    # 2. CHECK RUNTIME CACHE
-    with db_cache_lock:
-        if norm_search in db_train_cache:
-            cached = db_train_cache[norm_search]
-            if cached.get("type") == "station":
-                return cached.get("eva")
-
-    # 3. FALLBACK TO DB API ONLY IF NOT IN CONFIG
-    encoded_name = urllib.parse.quote(clean_name, safe="")
-    data = db_api_get(f"/station/{encoded_name}")
-
-    if data:
-        try:
-            root = ET.fromstring(data)
-            for element in root.iter():
-                eva_attr = element.get("eva")
-                if eva_attr and eva_attr.isdigit():
-                    with db_cache_lock:
-                        db_train_cache[norm_search] = {
-                            "type": "station",
-                            "eva": eva_attr,
-                            "timestamp": time.time()
-                        }
-                    return eva_attr
-        except Exception as e:
-            print("DB Station XML Fehler:", repr(e))
-
-    print(f"Keine DB EVA-Nummer für '{station_name}' gefunden.")
-    return None
 
 def db_api_get(path):
     """
@@ -1802,7 +1842,7 @@ def get_db_changes(eva_no):
 
     return data
 
-def parse_db_train(data, category, target_time):
+def parse_db_train(data, category, train_number):
 
     if not data:
         return None
