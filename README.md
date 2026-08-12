@@ -27,8 +27,6 @@ python -m pip install -r requirements.txt
 ### 3. Add Credentials to credentials.py
 
 ```python
-# credentials.py for TransitMatrix.py
-# Contact Fluffy_Nardoragon@mail.de or https://github.com/alfi-floof/TransitMatrix/issues
 #HVV GeoFox API
 HVV_API_USER = ""
 HVV_API_PASSWORD = ""
