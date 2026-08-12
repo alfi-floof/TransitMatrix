@@ -4,8 +4,8 @@ from enum import IntEnum
 # ==========================
 # EINSTELLUNGEN
 # ==========================
-STATION_NAME = "Frankfurt (Main) Hbf"
-STATION_ID = "8000105"
+STATION_NAME = "Hamburg Hbf"
+STATION_ID = "8002549" #EVA Station ID for ICE MATCH
 DATA_SOURCE = "HVV"
 # später: DATA_SOURCE = "HVV"
 # "HVV" = API | "WEB" = Scraping
