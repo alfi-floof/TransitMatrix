@@ -2253,15 +2253,39 @@ def parse(text):
             else:
                 linie = typ
 
-        # DRF Fernreisezug umwandeln
-        drf_match = re.match(
+        # DRF Fernreisezug:
+        # DB lookup versuchen, falls die Linie von HVV nicht
+        # genauer identifiziert werden kann.
+        drf_match = re.fullmatch(
             r"DRF\s+(\d+)",
             linie,
             re.IGNORECASE
         )
 
         if drf_match:
-            linie = "ZUG " + drf_match.group(1)
+            zugnummer = drf_match.group(1)
+
+            db_linie = lookup_db_train(
+                train_number=zugnummer,
+                planned_time=plan,
+                destination=ziel
+            )
+
+            if db_linie:
+                linie = db_linie
+                debug_print(
+                    "DRF DB Lookup:",
+                    zugnummer,
+                    "->",
+                    linie
+                )
+            else:
+                linie = "ZUG " + zugnummer
+                debug_print(
+                    "DRF DB Lookup:",
+                    zugnummer,
+                    "-> kein Ergebnis, verwende ZUG"
+                )
 
         debug_print(
             "GELESEN:",
