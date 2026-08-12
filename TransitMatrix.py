@@ -12,16 +12,17 @@ import subprocess
 import sys
 import threading
 import time
+import atexit
 import tkinter as tk
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from ctypes import wintypes
 from datetime import datetime, timedelta
 from hashlib import sha1
 
 import requests
-from bs4 import BeautifulSoup
 
 import config
 from font import FONT
@@ -840,6 +841,70 @@ def is_line(text):
         return True
 
     return False
+
+# ============================================================
+# DB TIMETABLE TEMP FILE MANAGEMENT
+# ============================================================
+
+DB_TIMETABLE_PATTERN = "db_timetable_*.xml"
+
+# Files created during this program run.
+_db_timetable_files = set()
+
+
+def cleanup_stale_db_timetable_files():
+    """
+    Remove DB Timetable XML files left behind by a previous run.
+
+    This is intentionally called on startup so files are also
+    cleaned up after crashes, forced termination, or power loss.
+    """
+    for path in Path(".").glob(DB_TIMETABLE_PATTERN):
+        try:
+            path.unlink()
+            debug_print("Removed stale DB timetable file:", path.name)
+        except OSError as e:
+            debug_print(
+                "Could not remove stale DB timetable file:",
+                path.name,
+                e
+            )
+
+
+def register_db_timetable_file(path):
+    """
+    Register a DB timetable file as belonging to this program run.
+
+    The file will be removed during normal shutdown.
+    """
+    path = Path(path)
+    _db_timetable_files.add(path)
+
+
+def cleanup_db_timetable_files():
+    """
+    Remove DB Timetable XML files created during this run.
+    """
+    for path in list(_db_timetable_files):
+        try:
+            if path.exists():
+                path.unlink()
+                debug_print("Removed DB timetable file:", path.name)
+        except OSError as e:
+            debug_print(
+                "Could not remove DB timetable file:",
+                path.name,
+                e
+            )
+
+    _db_timetable_files.clear()
+
+
+def shutdown_db_timetable_cleanup():
+    """
+    Cleanup function registered with Python's exit handler.
+    """
+    cleanup_db_timetable_files()
 
 def parse_db_train_by_time(
     data,
@@ -2098,281 +2163,6 @@ def has_line_announcement(bus):
 
     return False
 
-def parse(text):
-
-    soup = BeautifulSoup(text, "html.parser")
-
-    result = []
-
-    # alle Zeilen aus departure-list holen
-    rows = soup.select(".departure-list .row")
-    debug_print("Rows gefunden:", len(rows))
-
-    if not rows:
-        print(soup.prettify()[:5000])
-
-
-    for row in rows:
-
-        cells = [
-            c.get_text(" ", strip=True)
-            for c in row.find_all("div", recursive=False)
-        ]
-
-        # Kopfzeile überspringen
-        if not cells:
-            continue
-
-        if cells[0].lower() == "linie":
-            continue
-
-        # Datumzeilen ignorieren
-        if re.match(
-                r"\d{1,2}\.\s+[A-Za-zäöüÄÖÜ]+\s+\d{4}",
-                cells[0]
-        ):
-            continue
-
-        # mindestens Linie + Ziel + Zeit benötigt
-        if len(cells) < 3:
-            continue
-
-        debug_print("CELLS:", cells)
-        debug_print(
-            "ZEIT FELD:",
-            repr(cells[3]) if len(cells) > 3 else "NICHT VORHANDEN"
-        )
-        debug_print("RAW CELLS:", cells)
-        linie = cells[0].strip()
-        ziel = cells[1].strip()
-
-        if len(cells) >= 5:
-            plan = cells[3].strip()
-            zeit = cells[4].strip()
-
-        else:
-            # Einfache Abfahrtsliste ohne Gleis/Echtzeit
-            plan = cells[2].strip()
-            zeit = cells[2].strip()
-
-        # Tippfehler von WEB abfangen
-        if zeit.lower().strip() == "sofor":
-            zeit = "sofort"
-
-        # Ausfälle niemals überschreiben
-        is_cancelled = "fällt aus" in zeit.lower()
-
-        # Wenn keine "in XX Min" Angabe vorhanden ist,
-        # Minuten aus der Planzeit berechnen
-        if (
-                not is_cancelled
-                and not re.search(r"\d+\s*Min", zeit, re.IGNORECASE)
-        ):
-
-            match = re.search(
-                r"(\d{1,2}):(\d{2})",
-                plan
-            )
-
-            if match:
-
-                hour = int(match.group(1))
-                minute = int(match.group(2))
-
-                now = datetime.now()
-
-                departure = now.replace(
-                    hour=hour,
-                    minute=minute,
-                    second=0,
-                    microsecond=0
-                )
-
-                diff_seconds = (
-                        departure - now
-                ).total_seconds()
-
-                # Falls die Abfahrtszeit bereits vorbei ist,
-                # prüfen ob es tatsächlich die nächste Abfahrt
-                # am nächsten Tag ist.
-                if diff_seconds < -60:
-                    departure += timedelta(days=1)
-                    diff_seconds = (
-                            departure - now
-                    ).total_seconds()
-
-                    target_time = departure
-
-                # Unter einer Minute = sofort
-                if diff_seconds <= 60:
-                    zeit = "sofort"
-                else:
-                    # immer auf die nächste volle Minute aufrunden
-                    diff = math.ceil(diff_seconds / 60)
-                    zeit = f"in {diff} Min"
-
-            else:
-                # wirklich keine Zeit vorhanden
-                zeit = plan
-
-        # SEV + Liniennummer behalten
-        sev_match = re.match(
-            r"SEV\s+([A-Z]*\d+)",
-            linie,
-            re.IGNORECASE
-        )
-
-        if sev_match:
-            linie = "SEV " + sev_match.group(1).upper()
-
-        # Zusatztexte hinter der eigentlichen Linienkennung entfernen
-        linie = re.sub(r"^(.*?\d+).*", r"\1", linie).strip()
-
-        match = re.fullmatch(
-            r"(MEX|ALX|FLX|FEX|ICE|ECE|IRE|ZUG|AST|KAT|SCH|SEV|RNV|AT|CB|RS|RE|RB|RJ|NJ|EN|GI|IC|IR|LM|EC|EV|FM|SB|TB|HS|S|U|A|C|X|M|N|R|F)(?:[\s-]*([A-Z]*\d+))?",
-            linie,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            typ = match.group(1).upper()
-            nummer = match.group(2)
-
-            if nummer and nummer.upper() != "NONE":
-
-                if typ == "GI":
-                    linie = f"{typ}-{nummer}"
-
-                elif typ in ["ICE", "ECE", "IC", "EC", "NJ", "EN", "ZUG", "SEV"]:
-                    linie = f"{typ} {nummer}"
-
-                else:
-                    linie = f"{typ}{nummer}"
-
-            else:
-                linie = typ
-
-        # DRF Fernreisezug:
-        # DB lookup versuchen, falls die Linie von HVV nicht
-        # genauer identifiziert werden kann.
-        drf_match = re.fullmatch(
-            r"DRF\s+(\d+)",
-            linie,
-            re.IGNORECASE
-        )
-
-        if drf_match:
-            zugnummer = drf_match.group(1)
-
-            db_linie = lookup_db_train(
-                train_number=zugnummer,
-                planned_time=plan,
-                destination=ziel
-            )
-
-            if db_linie:
-                linie = db_linie
-                debug_print(
-                    "DRF DB Lookup:",
-                    zugnummer,
-                    "->",
-                    linie
-                )
-            else:
-                linie = "ZUG " + zugnummer
-                debug_print(
-                    "DRF DB Lookup:",
-                    zugnummer,
-                    "-> kein Ergebnis, verwende ZUG"
-                )
-
-        debug_print(
-            "GELESEN:",
-            linie,
-            "|",
-            ziel,
-            "|",
-            plan,
-            "|",
-            zeit
-        )
-
-        # Linienzusätze entfernen
-        linie = re.sub(
-            r"\s*\(.*?\)",
-            "",
-            linie
-        ).strip()
-
-        # Linie prüfen
-        if not is_line(linie):
-            debug_print("Übersprungen:", linie)
-            continue
-
-
-        delay = 0
-
-        # Verspätung aus Planzeit
-        delay_match = re.search(
-            r"\+\s*[^0-9]*?(\d+)",
-            plan.replace("\xa0", " ")
-        )
-
-        if delay_match:
-            delay = int(delay_match.group(1))
-            delay_found = True
-        else:
-            delay_found = False
-
-        # ==========================================
-        # NEU: TARGET TIME BERECHNEN (Für Live-Countdown)
-        # ==========================================
-        target_time = None
-        if "fällt aus" not in zeit.lower():
-            # 1. Versuch: Aus Planzeit + Verspätung berechnen
-            match_plan = re.search(r"(\d{1,2}):(\d{2})", plan)
-            if match_plan:
-                now = datetime.now()
-                dep_time = now.replace(
-                    hour=int(match_plan.group(1)),
-                    minute=int(match_plan.group(2)),
-                    second=0,
-                    microsecond=0
-                )
-                # Falls die Zeit in der Vergangenheit liegt -> Tageswechsel
-                if (dep_time - now).total_seconds() < -60:
-                    dep_time += timedelta(days=1)
-
-                # Verspätung addieren
-                target_time = dep_time + timedelta(minutes=delay)
-
-            # 2. Versuch: Falls WEB keine Planzeit, aber "in 5 Min" liefert
-            else:
-                match_min = re.search(r"(\d+)\s*Min", zeit, re.IGNORECASE)
-                if match_min:
-                    target_time = datetime.now() + timedelta(minutes=int(match_min.group(1)))
-                elif "sofort" in zeit.lower() or "sofor" in zeit.lower():
-                    target_time = datetime.now()
-
-        result.append({
-            "station": {
-                "id": config.STATION_ID,
-                "name": config.STATION_NAME
-            },
-            "linie": linie,
-            "ziel": ziel,
-            "plan": plan,
-            "delay": delay,
-            "delay_found": delay_found,
-            "zeit": zeit,
-            "target_time": target_time  # <--- HIER WIRD ES ÜBERGEBEN
-        })
-
-    print("Gefundene Abfahrten:", len(result))
-
-    return result
-
 def draw_no_departures(matrix):
 
     global no_departures_blink
@@ -2510,23 +2300,6 @@ def draw_message(matrix):
     )
     draw_text(matrix, 0, 56, text_scroll, config.ColorCode.DELAY)
 
-def get_web_data():
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0)"
-        }
-
-        request = urllib.request.Request(
-            config.WEB_URL,
-            headers=headers
-        )
-
-        with urllib.request.urlopen(request, timeout=10) as response:
-            return response.read().decode("utf-8")
-
-    except Exception as e:
-        print(f"Fehler beim Laden der Webseite: {e}")
-        return None
 # DISPLAY
 
 def draw_reload_bar(matrix):
@@ -2611,17 +2384,7 @@ def update_data():
         data = []
 
         try:
-            if config.DATA_SOURCE == "WEB":
-                page = get_web_data()
-
-                if page is None:
-                    data_status = "OFFLINE"
-                    data = []
-                else:
-                    data = parse(page)
-                    data_status = "OK" if data else "EMPTY"
-
-            elif config.DATA_SOURCE == "HVV":
+            if config.DATA_SOURCE == "HVV":
                 data = get_hvv_data()
                 data_status = "OK"
 
@@ -3071,31 +2834,40 @@ def normalize(text):
     )
 
 if __name__ == "__main__":
+    # Clean up stale DB timetable XML files from previous runs/crashes on startup
+    cleanup_stale_db_timetable_files()
 
-    if config.DISPLAY_MODE == "LED":
-        init_led()
-    elif config.DISPLAY_MODE == "WINDOW":
-        create_window()
-    else:
-        raise ValueError(f"Invalid DISPLAY_MODE: {config.DISPLAY_MODE}")
+    # Register exit handler for clean shutdowns
+    atexit.register(shutdown_db_timetable_cleanup)
 
-    # 1. Start the main data thread
-    threading.Thread(target=update_data, daemon=True).start()
+    try:
+        if config.DISPLAY_MODE == "LED":
+            init_led()
+        elif config.DISPLAY_MODE == "WINDOW":
+            create_window()
+        else:
+            raise ValueError(f"Invalid DISPLAY_MODE: {config.DISPLAY_MODE}")
 
-    # 2. Start the messages thread ONLY if using HVV
-    if config.DATA_SOURCE == "HVV":
-        threading.Thread(target=update_messages_loop, daemon=True).start()
+        # 1. Start the main data thread
+        threading.Thread(target=update_data, daemon=True).start()
 
-    # 3. Start the animation/render loop
-    threading.Thread(target=master_render_loop, daemon=True).start()
+        # 2. Start the messages thread ONLY if using HVV
+        if config.DATA_SOURCE == "HVV":
+            threading.Thread(target=update_messages_loop, daemon=True).start()
 
-    # 4. Keep the program running
-    if config.DISPLAY_MODE == "WINDOW" and window:
-        window.mainloop()
-    elif config.DISPLAY_MODE == "LED":
-        try:
+        # 3. Start the animation/render loop
+        threading.Thread(target=master_render_loop, daemon=True).start()
+
+        # 4. Keep the program running
+        if config.DISPLAY_MODE == "WINDOW" and window:
+            window.mainloop()
+        elif config.DISPLAY_MODE == "LED":
             while True:
                 time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nProgram stopped.")
-            sys.exit(0)
+
+    except KeyboardInterrupt:
+        print("\nProgram stopped.")
+    finally:
+        # Clean up files created during this run when stopping
+        cleanup_db_timetable_files()
+        sys.exit(0)
