@@ -10,6 +10,10 @@ TransitMatrix is a real-time public transit departure board built for 64x64 RGB 
   - You can use a Adafruit RGB Matrix Bonnet, i wired the Display straight to the GPIO Pins of my Pi. **Using a different display or connection method will require code changes!**
 - 5V 3A+ power supply (Check your Panel)
 
+### Required APIs 
+- [HVV Geofox-API](https://www.hvv.de/de/fahrplaene/abruf-fahrplaninfos/datenabruf) - (You will need to Contact the HVV API Team at api@hochbahn.de)
+- [DB Timetables API](https://developers.deutschebahn.com/db-api-marketplace/apis/product/160163) - (You will need to Create a DB Customer Account)
+
 ## Quick Start & Installation
 
 ### 1. Clone the Repository
