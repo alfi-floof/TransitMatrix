@@ -67,39 +67,26 @@ WEB_URL = f"https://.../DM/{STATION_ID}"
 
 
 # ==============================================================================
-#  HVV GEOFOX GTI API CREDENTIALS
+#  HVV GEOFOX GTI API URL
 # ==============================================================================
 
 # Explanation: Endpoint URL for the HVV Geofox GTI service.
 HVV_API_URL = "https://gti.geofox.de"
 
-# Explanation: API Username provided by HVV Geofox API registration.
-HVV_API_USER = ""
-
-# Explanation: API Password/Key provided by HVV Geofox API registration.
-HVV_API_PASSWORD = ""
-
 
 # ==============================================================================
-#  DEUTSCHE BAHN (DB) TIMETABLES API CREDENTIALS
+#  DEUTSCHE BAHN (DB) TIMETABLES API URL
 # ==============================================================================
 
 # Explanation: Base endpoint for Deutsche Bahn Timetables API v1 (Marketplace API).
 DB_API_URL = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
 
-# Explanation: Client ID generated on DB API Marketplace.
-DB_CLIENT_ID = ""
-
-# Explanation: Secret API Key generated on DB API Marketplace.
-DB_API_KEY = ""
-
 # Explanation: Cache retention time in seconds for DB station lookups (3600 sec = 1 hour).
 # Helps avoid exceeding rate limits on DB APIs.
 DB_CACHE_TIME = 3600
 
-
 # ==============================================================================
-# ⚙️ RUNTIME & DISPLAY GEOMETRY
+#  RUNTIME & DISPLAY GEOMETRY
 # ==============================================================================
 
 # Polling frequency in seconds for updating departure data from APIs.
@@ -129,7 +116,7 @@ LINE_HEIGHT = 8
 
 
 # ==============================================================================
-# 🌙 AUTOMATIC NIGHT DIMMING & BRIGHTNESS
+#  AUTOMATIC NIGHT DIMMING & BRIGHTNESS
 # ==============================================================================
 
 # LED brightness level (0% - 100%) during daytime hours.
