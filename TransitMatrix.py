@@ -70,7 +70,7 @@ def hex_to_rgb(hex_color):
 bus_data = []
 
 db_train_cache = {}
-
+db_fchg_cache = {}
 db_plan_cache = {}
 
 db_cache_lock = threading.Lock()
@@ -841,64 +841,484 @@ def is_line(text):
 
     return False
 
-def parse_db_train_by_time(data, category, planned_departure):
+def parse_db_train_by_time(
+    data,
+    category,
+    planned_departure,
+    time_tolerance_minutes=1
+):
+    """
+    Find a DB train by category and departure time.
+
+    Returns:
+        "ICE 1234"
+        "IC 1234"
+        "DPF 1234"
+
+    or None if no matching train was found.
+    """
+
     if not data:
         return None
 
     try:
+
         root = ET.fromstring(data)
+
     except Exception as e:
-        print("DB Timetable XML Fehler:", repr(e))
+
+        print(
+            "DB Timetable XML Fehler:",
+            repr(e)
+        )
+
         return None
 
-    # Die DB API formatiert die Planzeit als YYMMDDHHmm (z.B. 2608112229)
-    target_time_str = planned_departure.strftime("%y%m%d%H%M")
+    wanted_category = normalize(
+        category
+    ).upper()
 
-    for s in root.iter("s"):
-        tl = s.find("tl")
-        dp = s.find("dp")
+    best_match = None
+    best_difference = None
 
-        if tl is not None and dp is not None:
-            train_category = tl.get("c", "").strip().upper()
-            train_number = tl.get("n", "").strip()
-            db_pt = dp.get("pt", "").strip()
+    for element in root.iter():
 
-            if train_category == category.upper() and db_pt == target_time_str:
-                return f"{train_category} {train_number}"
+        tag = (
+            element.tag
+            .split("}")[-1]
+            .lower()
+        )
 
-    return None
+        if tag != "s":
+            continue
 
-def lookup_db_train_by_time(category, station_name, planned_departure):
-    cache_key = (normalize(category), normalize(station_name), planned_departure.strftime("%y%m%d%H%M"))
+        tl = None
+        dp = None
+        ar = None
+
+        for child in element:
+
+            child_tag = (
+                child.tag
+                .split("}")[-1]
+                .lower()
+            )
+
+            if child_tag == "tl":
+                tl = child
+
+            elif child_tag == "dp":
+                dp = child
+
+            elif child_tag == "ar":
+                ar = child
+
+        if tl is None:
+            continue
+
+        train_category = (
+            tl.get("c", "")
+            .strip()
+            .upper()
+        )
+
+        train_number = (
+            tl.get("n", "")
+            .strip()
+        )
+
+        if not train_number:
+            continue
+
+        if train_category != wanted_category:
+            continue
+
+        # Prefer departure information.
+        event = dp if dp is not None else ar
+
+        if event is None:
+            continue
+
+        # Prefer changed time if present.
+        # Otherwise use planned time.
+        db_time = (
+            event.get("ct", "").strip()
+            or event.get("pt", "").strip()
+        )
+
+        if not db_time:
+            continue
+
+        try:
+
+            db_departure = datetime.strptime(
+                db_time,
+                "%y%m%d%H%M"
+            )
+
+        except ValueError:
+
+            continue
+
+        difference = abs(
+            (
+                db_departure -
+                planned_departure
+            ).total_seconds()
+        )
+
+        difference_minutes = (
+            difference / 60
+        )
+
+        if (
+            difference_minutes
+            > time_tolerance_minutes
+        ):
+            continue
+
+        if (
+            best_difference is None
+            or difference < best_difference
+        ):
+
+            best_difference = difference
+
+            best_match = (
+                f"{train_category} "
+                f"{train_number}"
+            )
+
+    return best_match
+
+def parse_db_change_by_time(
+    data,
+    category,
+    planned_departure,
+    time_tolerance_minutes=3
+):
+    """
+    Find a train in the DB full-change feed by
+    category and departure time.
+
+    Returns:
+        "ICE 1234"
+
+    or None.
+    """
+
+    if not data:
+        return None
+
+    try:
+
+        root = ET.fromstring(data)
+
+    except Exception as e:
+
+        print(
+            "DB Änderungs-XML Fehler:",
+            repr(e)
+        )
+
+        return None
+
+    wanted_category = normalize(
+        category
+    ).upper()
+
+    best_match = None
+    best_difference = None
+
+    for element in root.iter():
+
+        tag = (
+            element.tag
+            .split("}")[-1]
+            .lower()
+        )
+
+        if tag != "s":
+            continue
+
+        tl = None
+        dp = None
+        ar = None
+
+        for child in element:
+
+            child_tag = (
+                child.tag
+                .split("}")[-1]
+                .lower()
+            )
+
+            if child_tag == "tl":
+                tl = child
+
+            elif child_tag == "dp":
+                dp = child
+
+            elif child_tag == "ar":
+                ar = child
+
+        if tl is None:
+            continue
+
+        train_category = (
+            tl.get("c", "")
+            .strip()
+            .upper()
+        )
+
+        train_number = (
+            tl.get("n", "")
+            .strip()
+        )
+
+        if not train_number:
+            continue
+
+        if train_category != wanted_category:
+            continue
+
+        # A departure is what we're looking for.
+        if dp is None:
+            continue
+
+        # For changes:
+        # ct = changed time
+        # pt = planned time
+        db_time = (
+            dp.get("ct", "").strip()
+            or dp.get("pt", "").strip()
+        )
+
+        if not db_time:
+            continue
+
+        try:
+
+            db_departure = datetime.strptime(
+                db_time,
+                "%y%m%d%H%M"
+            )
+
+        except ValueError:
+
+            continue
+
+        difference = abs(
+            (
+                db_departure -
+                planned_departure
+            ).total_seconds()
+        )
+
+        difference_minutes = (
+            difference / 60
+        )
+
+        if (
+            difference_minutes
+            > time_tolerance_minutes
+        ):
+            continue
+
+        if (
+            best_difference is None
+            or difference < best_difference
+        ):
+
+            best_difference = difference
+
+            best_match = (
+                f"{train_category} "
+                f"{train_number}"
+            )
+
+    return best_match
+
+def lookup_db_train_by_time(
+    category,
+    station_name,
+    planned_departure
+):
+    """
+    Look up an IC/ICE/DPF train using DB Timetables.
+
+    First checks the planned timetable (/plan).
+
+    If no train is found, falls back to the full
+    timetable changes feed (/fchg).
+
+    The result is cached.
+    """
+
+    cache_key = (
+        normalize(category),
+        normalize(station_name),
+        planned_departure.strftime(
+            "%y%m%d%H%M"
+        )
+    )
 
     with db_cache_lock:
-        cached = db_train_cache.get(cache_key)
+
+        cached = db_train_cache.get(
+            cache_key
+        )
+
         if cached:
-            age = time.time() - cached["timestamp"]
+
+            age = (
+                time.time()
+                - cached["timestamp"]
+            )
+
             if age < config.DB_CACHE_TIME:
+
                 return cached.get("data")
 
-    eva = get_db_station_eva(station_name)
+    eva = config.DB_STATION_EVA
+
     if not eva:
+        print(
+            "DB_STATION_EVA ist nicht gesetzt."
+        )
+
         return None
 
-    # FIX: Change %Y%m%d to %y%m%d (6 digits instead of 8)
-    date_string = planned_departure.strftime("%y%m%d")
+    # ==================================================
+    # 1. TRY PLANNED TIMETABLE
+    # ==================================================
+
+    date_string = planned_departure.strftime(
+        "%y%m%d"
+    )
+
     hour = planned_departure.hour
 
-    data = get_db_plan(eva, date_string, hour)
-    result = parse_db_train_by_time(data, category, planned_departure)
+    data = get_db_plan(
+        eva,
+        date_string,
+        hour
+    )
+
+    result = parse_db_train_by_time(
+        data,
+        category,
+        planned_departure
+    )
+
+    if result:
+
+        print(
+            f"DB Zug gefunden: {result} "
+            f"(Plan {planned_departure.strftime('%H:%M')})"
+        )
+
+    # ==================================================
+    # 2. TRY PREVIOUS HOUR
+    # ==================================================
+
+    if result is None:
+
+        previous_hour = (
+            planned_departure
+            - timedelta(hours=1)
+        )
+
+        data = get_db_plan(
+            eva,
+            previous_hour.strftime("%y%m%d"),
+            previous_hour.hour
+        )
+
+        result = parse_db_train_by_time(
+            data,
+            category,
+            planned_departure
+        )
+
+    # ==================================================
+    # 3. TRY NEXT HOUR
+    # ==================================================
+
+    if result is None:
+
+        next_hour = (
+            planned_departure
+            + timedelta(hours=1)
+        )
+
+        data = get_db_plan(
+            eva,
+            next_hour.strftime("%y%m%d"),
+            next_hour.hour
+        )
+
+        result = parse_db_train_by_time(
+            data,
+            category,
+            planned_departure
+        )
+
+    # ==================================================
+    # 4. FALL BACK TO FULL CHANGES
+    # ==================================================
+
+    if result is None:
+
+        print(
+            f"DB Plan leer / kein Treffer für "
+            f"{category} um "
+            f"{planned_departure.strftime('%H:%M')}"
+        )
+
+        change_data = get_db_changes(
+            eva
+        )
+
+        result = parse_db_change_by_time(
+            change_data,
+            category,
+            planned_departure
+        )
+
+        if result:
+
+            print(
+                f"DB Zug gefunden: {result} "
+                f"(Änderung {planned_departure.strftime('%H:%M')})"
+            )
+
+    # ==================================================
+    # CACHE RESULT
+    # ==================================================
 
     with db_cache_lock:
+
         db_train_cache[cache_key] = {
             "timestamp": time.time(),
             "data": result
         }
 
     if result:
-        print(f"DB Zug gefunden: {result} (um {planned_departure.strftime('%H:%M')})")
+
+        print(
+            f"DB Zug gefunden: "
+            f"{result} "
+            f"(um {planned_departure.strftime('%H:%M')})"
+        )
+
     else:
-        print(f"DB Zug nicht gefunden für {category} um {planned_departure.strftime('%H:%M')}")
+
+        print(
+            f"DB Zug nicht gefunden für "
+            f"{category} um "
+            f"{planned_departure.strftime('%H:%M')}"
+        )
 
     return result
 
@@ -1105,18 +1525,40 @@ def db_api_get(path):
     )
 
     try:
-
         with urllib.request.urlopen(
             request,
             timeout=10
         ) as response:
 
-            return response.read()
+            data = response.read()
+
+            print(
+                f"DB HTTP {response.status}: "
+                f"{response.geturl()}"
+            )
+
+            print(
+                f"DB Content-Type: "
+                f"{response.headers.get('Content-Type')}"
+            )
+
+            print(
+                f"DB Response length: "
+                f"{len(data)} bytes"
+            )
+
+            print(
+                "DB Response:",
+                data[:500]
+            )
+
+            return data
 
     except urllib.error.HTTPError as e:
 
         print(
-            f"DB Timetables HTTP Fehler {e.code}: {url}"
+            f"DB Timetables HTTP Fehler "
+            f"{e.code}: {url}"
         )
 
         return None
@@ -1128,7 +1570,6 @@ def db_api_get(path):
         )
 
         return None
-
 
 def get_db_station_eva(station_name):
     """
@@ -1197,10 +1638,10 @@ def get_db_station_eva(station_name):
 
 def get_db_plan(eva_no, date, hour):
     """
-    Download and cache one DB timetable hour.
+    Download and cache one DB planned timetable hour.
 
     date:
-        YYYYMMDD
+        YYMMDD
 
     hour:
         HH
@@ -1249,7 +1690,54 @@ def get_db_plan(eva_no, date, hour):
 
     return data
 
-def parse_db_train(data, category, train_number):
+def get_db_changes(eva_no):
+    """
+    Download and cache the DB full-change timetable.
+
+    /fchg/{evaNo} contains known timetable changes
+    from now into the future.
+    """
+
+    cache_key = str(eva_no)
+
+    with db_cache_lock:
+
+        cached = db_fchg_cache.get(cache_key)
+
+        if cached:
+
+            age = time.time() - cached["timestamp"]
+
+            cache_time = getattr(
+                config,
+                "DB_FCHG_CACHE_TIME",
+                30
+            )
+
+            if age < cache_time:
+                return cached["data"]
+
+    path = f"/fchg/{eva_no}"
+
+    print(
+        f"DB Timetable: Lade Änderungen {eva_no}"
+    )
+
+    data = db_api_get(path)
+
+    if not data:
+        return None
+
+    with db_cache_lock:
+
+        db_fchg_cache[cache_key] = {
+            "timestamp": time.time(),
+            "data": data
+        }
+
+    return data
+
+def parse_db_train(data, category, target_time):
 
     if not data:
         return None
@@ -1371,10 +1859,10 @@ def parse_db_train(data, category, train_number):
     return result
 
 def lookup_db_train(
-        category,
-        train_number,
-        station_name,
-        target_time=None
+    category,
+    train_number,
+    station_name,
+    target_time=None
 ):
     """
     Look up an IC/ICE/DPF train using DB Timetables.
@@ -1383,31 +1871,29 @@ def lookup_db_train(
     requested from DB.
     """
 
+    if target_time is None:
+        target_time = datetime.now()
+
     cache_key = (
         normalize(category),
         str(train_number),
-        normalize(station_name)
+        normalize(station_name),
+        target_time.strftime("%Y%m%d%H%M")
     )
 
     with db_cache_lock:
-
         cached = db_train_cache.get(cache_key)
 
         if cached:
-
             age = time.time() - cached["timestamp"]
 
             if age < config.DB_CACHE_TIME:
-
                 return cached.get("data")
 
-    eva = get_db_station_eva(station_name)
+    eva = config.DB_STATION_EVA
 
     if not eva:
         return None
-
-    if target_time is None:
-        target_time = datetime.now()
 
     date_string = target_time.strftime("%Y%m%d")
     hour = target_time.hour
@@ -1425,17 +1911,12 @@ def lookup_db_train(
     )
 
     # The train might be close to an hour boundary.
-    # If it wasn't found, also check the neighbouring hour.
     if result is None:
 
-        previous_hour = (
-            target_time - timedelta(hours=1)
-        )
+        previous_hour = target_time - timedelta(hours=1)
+        next_hour = target_time + timedelta(hours=1)
 
-        next_hour = (
-            target_time + timedelta(hours=1)
-        )
-
+        # Previous hour
         if previous_hour.date() == target_time.date():
 
             data = get_db_plan(
@@ -1450,6 +1931,7 @@ def lookup_db_train(
                 train_number
             )
 
+        # Next hour
         if result is None:
 
             if next_hour.date() == target_time.date():
@@ -1467,21 +1949,17 @@ def lookup_db_train(
                 )
 
     with db_cache_lock:
-
         db_train_cache[cache_key] = {
             "timestamp": time.time(),
             "data": result
         }
 
     if result:
-
         print(
             f"DB Zug gefunden: "
             f"{category} {train_number}"
         )
-
     else:
-
         print(
             f"DB Zug nicht gefunden: "
             f"{category} {train_number}"
