@@ -16,13 +16,12 @@ import atexit
 import tkinter as tk
 import urllib.parse
 import urllib.request
+import urllib.error
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from ctypes import wintypes
 from datetime import datetime, timedelta
 from hashlib import sha1
-
-import requests
 
 import config
 from font import FONT
@@ -212,34 +211,30 @@ def cycle_window_title():
 def create_window():
     global window
     global canvas
-
     if config.DISPLAY_MODE != "WINDOW":
         return
 
     window = tk.Tk()
 
-    # --- LINUX-FIX FÜR DAS ICON ---
-    # 1. Ermittle den absoluten Ordnerpfad deines Skripts
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    # 2. Pfad zur Icon-Datei sauber zusammensetzen
+    # LINUX-FIX FÜR DAS ICON (with __file__ fallback)
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        script_dir = os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv[0] else os.getcwd()
+
     icon_path = os.path.join(script_dir, "icon.ico")
 
     try:
-        # Falls du die Datei in icon.png umbenannt hast, hier "icon.png" eintragen
         icon_img = tk.PhotoImage(file=icon_path)
         window.tk.call("wm", "iconphoto", window._w, icon_img)
     except Exception as e:
-        # Falls es unter Windows weiterhin mit .ico laufen soll, falls PNG fehlschlägt:
         try:
             window.iconbitmap(icon_path)
         except Exception:
-            print(f"Icon konnte nicht geladen werden: {e}")
-    # ------------------------------
+            pass
 
     window.title("TransitMatrix")
     window.after(2000, cycle_window_title)
-
-    # Feste Skalierung für Tkinter
     window.tk.call("tk", "scaling", 1.0)
 
     canvas = tk.Canvas(
@@ -250,14 +245,28 @@ def create_window():
         highlightthickness=0,
         bd=0,
     )
-
     canvas.pack(fill="none", expand=False)
-
     window.resizable(False, False)
+    window.geometry(f"{config.WIDTH * config.SCALE}x{config.HEIGHT * config.SCALE}")
 
-    window.geometry(
-        f"{config.WIDTH * config.SCALE}x" f"{config.HEIGHT * config.SCALE}"
-    )
+    def start_move(event):
+        window._start_x = event.x
+        window._start_y = event.y
+
+    def do_move(event):
+        deltax = event.x - getattr(window, "_start_x", 0)
+        deltay = event.y - getattr(window, "_start_y", 0)
+        x = window.winfo_x() + deltax
+        y = window.winfo_y() + deltay
+        window.geometry(f"+{x}+{y}")
+
+    window.bind("<Button-1>", start_move)
+    window.bind("<B1-Motion>", do_move)
+    canvas.bind("<Button-1>", start_move)
+    canvas.bind("<B1-Motion>", do_move)
+    window.update_idletasks()
+    disable_rounded_corners(window)
+    window.update()
 
     def start_move(event):
         window._start_x = event.x
@@ -476,124 +485,56 @@ def get_scroll_text(text,offset,length):
 
 def draw_bus_block(matrix, index, bus):
     global blink_state
-
     if not bus:
         return
 
     y_line = index * 16
     y_target = y_line + 8
-
     line = normalize(bus.get("linie", ""))
 
     time_reserved = 5 * config.CHAR_WIDTH
     line_pixel_space = config.WIDTH - time_reserved
     max_line_chars = line_pixel_space // config.CHAR_WIDTH
 
-    # --- Linienanzeige berechnen ---
     if get_text_width(line) > line_pixel_space:
-        line_display = get_scroll_text(
-            line,
-            line_scroll_offset[index],
-            max_line_chars
-        )
+        line_display = get_scroll_text(line, line_scroll_offset[index], max_line_chars)
     else:
         line_display = line
 
     line_color = get_line_color(line)
-
-    # --- Daten aus bus lesen ---
     ziel = normalize(bus.get("ziel", ""))
-    plan = bus.get("plan", "")
+    plan_time_clean = re.sub(r"\s*\+\s*\d+", "", bus.get("plan", "")).strip()
     zeit_raw = bus.get("zeit", "")
     delay = bus.get("delay", 0)
     delay_found = bus.get("delay_found", False)
 
-    # --- Planzeit bereinigen (für Breiten/Collision) ---
-    plan_time_clean = re.sub(r"\s*\+\s*\d+", "", plan).strip()
-
-    # Muss die Linie überhaupt scrollen?
-    line_scrolls = get_text_width(line) > line_pixel_space
-
-    # Nur bei scrollenden Linien besteht Kollisionsgefahr
-    if line_scrolls:
-        full_line_width = get_text_width(line)
-        time_x = config.WIDTH - get_text_width(plan_time_clean)
-        touches_time = full_line_width >= time_x
-    else:
-        touches_time = False
-
-    # --- Linienanzeige zeichnen ---
-    # Nur echte S-/U-/A-Linien bekommen Buchstaben
-    # "SEV" darf NICHT als S-Bahn erkannt werden.
-    is_logo_line = re.match(
-        r"^(S|U|A)(?:\d+)?$",
-        line.strip(),
-        re.IGNORECASE
-    )
+    is_logo_line = re.match(r"^(S|U|A)(?:\d+)?$", line.strip(), re.IGNORECASE)
 
     if is_logo_line:
-        draw_text(
-            matrix,
-            0,
-            y_line,
-            line_display[0],
-            line_color
-        )
-
-        draw_text(
-            matrix,
-            config.CHAR_WIDTH,
-            y_line,
-            line_display[1:],
-            config.ColorCode.DEFAULT
-        )
-
+        draw_text(matrix, 0, y_line, line_display[0], line_color)
+        draw_text(matrix, config.CHAR_WIDTH, y_line, line_display[1:], config.ColorCode.DEFAULT)
     else:
-        draw_text(
-            matrix,
-            0,
-            y_line,
-            line_display,
-            line_color
-        )
+        draw_text(matrix, 0, y_line, line_display, line_color)
 
     # =====================
     # MINUTEN & "NOW" LOGIK
     # =====================
-
     display_minutes = ""
     zeit_lower = normalize(zeit_raw).lower()
-
-    # 1. Prüfen, ob die API explizit Ausfall oder NOW meldet
     is_cancelled = "fällt aus" in zeit_lower
-    api_now = (
-            "sofort" in zeit_lower
-            or "sofor" in zeit_lower
-            or "jetzt" in zeit_lower
-            or "now" in zeit_lower
-            or re.search(r"\bin\s*0\s*min\b", zeit_lower) is not None
-    )
-
+    api_now = ("sofort" in zeit_lower or "jetzt" in zeit_lower or "now" in zeit_lower or re.search(r"\bin\s*0\s*min\b", zeit_lower) is not None)
     now_active = api_now
+    target_time_bus = bus.get("target_time")
 
-    # 2. Lokalen Countdown prüfen (falls API nicht ohnehin schon NOW sagt)
-    target_time = bus.get("target_time")
-
-    if not is_cancelled and not api_now and target_time:
-        # Wie viele Sekunden sind es von JETZT bis zur Zielzeit?
-        diff_seconds = (target_time - datetime.now()).total_seconds()
-
-        # Auf die nächste volle Minute aufrunden
+    if not is_cancelled and not api_now and target_time_bus:
+        diff_seconds = (target_time_bus - datetime.now()).total_seconds()
         minutes = math.ceil(diff_seconds / 60)
-
         if minutes <= 0:
             now_active = True
         elif minutes == 1:
             display_minutes = "1'"
         else:
             display_minutes = str(minutes) + "'"
-
-    # Fallback, falls keine target_time da ist (z.B. beim ersten Start oder Fehler)
     elif not is_cancelled and not now_active:
         match = re.search(r"\b(?:in\s*)?(\d+)\s*Min", zeit_raw, re.IGNORECASE)
         if match:
@@ -613,147 +554,51 @@ def draw_bus_block(matrix, index, bus):
     # =====================
     # ZEIT RECHTS
     # =====================
-
-    plan_time = plan_time_clean
-
     if now_active:
         now_text = "NOW" if blink_state else "   "
         time_x = config.WIDTH - get_text_width(now_text) + 1
         draw_text(matrix, time_x, y_line, now_text, config.ColorCode.DEFAULT)
-
     elif display_minutes == "AUS":
         cancel_text = "FÄLLT" if blink_state else "AUS"
         time_x = config.WIDTH - get_text_width(cancel_text) + 1
         draw_text(matrix, time_x, y_line, cancel_text, config.ColorCode.DELAY)
-
     elif time_display_mode == 0:
-
-        time_x = config.WIDTH - get_text_width(plan_time)
-
-        # Uhrzeit immer gelb
-        time_color = config.ColorCode.DEFAULT
-
-        draw_text(
-            matrix,
-            time_x,
-            y_line,
-            plan_time,
-            time_color
-        )
-
+        time_x = config.WIDTH - get_text_width(plan_time_clean)
+        draw_text(matrix, time_x, y_line, plan_time_clean, config.ColorCode.DEFAULT)
     else:
-
         if time_display_mode == 1 and delay_found:
             right_text = "+" + str(delay) + "'"
-
-            if delay > 0:
-                color = config.ColorCode.DELAY
-            else:
-                color = config.ColorCode.OK
-
+            color = config.ColorCode.DELAY if delay > 0 else config.ColorCode.OK
         else:
             right_text = display_minutes
             color = config.ColorCode.DEFAULT
 
         time_width = get_text_width(right_text)
-
-        # rechtsbündig an der letzten Pixelspalte
-        time_x = config.WIDTH - time_width
-
-        # nicht über die Linienanzeige laufen
-        if time_x < 30:
-            time_x = 30
-
-        draw_text(
-            matrix,
-            time_x,
-            y_line,
-            right_text,
-            color
-        )
+        time_x = max(30, config.WIDTH - time_width)
+        draw_text(matrix, time_x, y_line, right_text, color)
 
     # =====================
     # ZIEL UNTEN
     # =====================
-
     show_ring = ziel in ("RING S41", "RING S42")
-
     max_chars = 8 if show_ring else 10
+    target_display = get_scroll_text(ziel, scroll_offset[index], max_chars)
+    draw_text(matrix, 0, y_target, target_display, config.ColorCode.DEFAULT)
 
-    has_announcement = has_line_announcement(bus)
-
-    target_display = get_scroll_text(
-        ziel,
-        scroll_offset[index],
-        max_chars
-    )
-
-    draw_text(
-        matrix,
-        0,
-        y_target,
-        target_display,
-        config.ColorCode.DEFAULT
-    )
-
-    # Rotes ! ganz rechts am Rand
-    if has_announcement:
-        exclamation = "!"
-
-        exclamation_x = config.WIDTH - get_text_width(exclamation)
-
-        draw_text(
-            matrix,
-            exclamation_x,
-            y_target,
-            exclamation,
-            config.ColorCode.DELAY
-        )
+    if has_line_announcement(bus):
+        draw_text(matrix, config.WIDTH - get_text_width("!"), y_target, "!", config.ColorCode.DELAY)
 
     if show_ring:
         symbol_x = get_text_width(target_display) + 2
-
-        s41_bitmap = [
-            "0011100",
-            "0100010",
-            "1000111",
-            "1000010",
-            "1000000",
-            "0100010",
-            "0011100",
-        ]
-
-        s42_bitmap = [
-            "0011100",
-            "0100010",
-            "1110001",
-            "0100001",
-            "0000001",
-            "0100010",
-            "0011100",
-        ]
-
-        if ziel == "RING S41":
-            bitmap = s41_bitmap
-        elif ziel == "RING S42":
-            bitmap = s42_bitmap
-        else:
-            bitmap = None
-
-        if bitmap:
-            for yy, row in enumerate(bitmap):
-                for xx, pixel in enumerate(row):
-                    if pixel == "1":
-                        px = symbol_x + xx
-                        py = y_target + yy
-
-                        if 0 <= px < config.WIDTH and 0 <= py < config.HEIGHT:
-                            set_pixel(
-                                matrix,
-                                px,
-                                py,
-                                config.ColorCode.DEFAULT
-                            )
+        s41_bitmap = ["0011100", "0100010", "1000111", "1000010", "1000000", "0100010", "0011100"]
+        s42_bitmap = ["0011100", "0100010", "1110001", "0100001", "0000001", "0100010", "0011100"]
+        bitmap = s41_bitmap if ziel == "RING S41" else s42_bitmap
+        for yy, row in enumerate(bitmap):
+            for xx, pixel in enumerate(row):
+                if pixel == "1":
+                    px, py = symbol_x + xx, y_target + yy
+                    if 0 <= px < config.WIDTH and 0 <= py < config.HEIGHT:
+                        set_pixel(matrix, px, py, config.ColorCode.DEFAULT)
 
 def is_platform(text):
 
@@ -848,108 +693,157 @@ def is_line(text):
 
 DB_TIMETABLE_PATTERN = "db_timetable_*.xml"
 
-# Files created during this program run.
-_db_timetable_files = set()
-
-
-def cleanup_stale_db_timetable_files():
-    """
-    Remove DB Timetable XML files left behind by a previous run.
-
-    This is intentionally called on startup so files are also
-    cleaned up after crashes, forced termination, or power loss.
-    """
-    for path in Path(".").glob(DB_TIMETABLE_PATTERN):
-        try:
-            path.unlink()
-            debug_print("Removed stale DB timetable file:", path.name)
-        except OSError as e:
-            debug_print(
-                "Could not remove stale DB timetable file:",
-                path.name,
-                e
-            )
-
-
-def register_db_timetable_file(path):
-    """
-    Register a DB timetable file as belonging to this program run.
-
-    The file will be removed during normal shutdown.
-    """
-    path = Path(path)
-    _db_timetable_files.add(path)
-
 
 def cleanup_db_timetable_files():
-    """
-    Remove DB Timetable XML files created during this run.
-    """
-    for path in list(_db_timetable_files):
+    try:
+        # Attempt to use __file__ first (works when run as a standard script)
+        script_dir = Path(__file__).resolve().parent
+    except NameError:
+        # Fallback for environments where __file__ is undefined (e.g., some IDEs or compiled executables)
+        script_dir = Path(sys.argv[0]).resolve().parent if sys.argv[0] else Path.cwd()
+
+    for path in script_dir.glob(DB_TIMETABLE_PATTERN):
         try:
-            if path.exists():
+            if path.is_file():
                 path.unlink()
                 debug_print("Removed DB timetable file:", path.name)
-        except OSError as e:
-            debug_print(
-                "Could not remove DB timetable file:",
-                path.name,
-                e
-            )
-
-    _db_timetable_files.clear()
+        except Exception as e:
+            debug_print(f"Could not remove DB timetable file {path.name}: {e}")
 
 
-def shutdown_db_timetable_cleanup():
-    """
-    Cleanup function registered with Python's exit handler.
-    """
-    cleanup_db_timetable_files()
+def parse_db_train_by_time(data, category, train_number, planned_departure, destination=None, time_tolerance_minutes=15):
+    if not data:
+        return None
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        return None
 
-def parse_db_train_by_time(
+    wanted_category = normalize(category).upper()
+    wanted_number = str(train_number).strip()
+    wanted_destination = normalize(destination or "").upper()
+
+    # Long-distance train category aliases in DB IRIS
+    LONG_DISTANCE_CATS = {"ICE", "IC", "EC", "ECE", "RJ", "RJX", "TGV", "FLX", "DPF", "D"}
+
+    best_match = None
+    best_score = None
+
+    for service in root.iter():
+        if service.tag.split("}")[-1].lower() != "s":
+            continue
+
+        tl, dp, ar = None, None, None
+        for child in service:
+            c_tag = child.tag.split("}")[-1].lower()
+            if c_tag == "tl":
+                tl = child
+            elif c_tag == "dp":
+                dp = child
+            elif c_tag == "ar":
+                ar = child
+
+        if tl is None:
+            continue
+
+        c = tl.get("c", "").strip().upper()
+        n = tl.get("n", "").strip()
+
+        # 1. Match train number
+        if n != wanted_number:
+            continue
+
+        # 2. Match category flexibly for long-distance trains
+        if wanted_category in LONG_DISTANCE_CATS:
+            if c not in LONG_DISTANCE_CATS:
+                continue
+        else:
+            if c != wanted_category:
+                continue
+
+        event = dp if dp is not None else ar
+        if event is None:
+            continue
+
+        db_time = event.get("ct", "").strip() or event.get("pt", "").strip()
+        if not db_time:
+            continue
+
+        try:
+            db_departure = datetime.strptime(db_time, "%y%m%d%H%M")
+        except ValueError:
+            continue
+
+        diff_secs = abs((db_departure - planned_departure).total_seconds())
+
+        # Allow wider time window for long-distance trains (e.g., 60 mins)
+        max_tolerance = 60 if wanted_category in LONG_DISTANCE_CATS else time_tolerance_minutes
+        if diff_secs > max_tolerance * 60:
+            continue
+
+        dest_match = False
+        if wanted_destination:
+            texts = [
+                normalize(child.text.strip()).upper()
+                for child in service.iter()
+                if child.text and child.tag.split("}")[-1].lower() in ("n", "name", "destination", "station", "dp", "ar")
+            ]
+            dt = " ".join(texts)
+            if wanted_destination in dt or any(w in dt for w in wanted_destination.split() if len(w) >= 4):
+                dest_match = True
+
+        score = (0 if dest_match else 1, diff_secs)
+        if best_score is None or score < best_score:
+            best_score = score
+            best_match = f"{c} {n}"
+
+    return best_match
+
+def find_db_train_by_time(
     data,
     category,
     planned_departure,
     destination=None,
-    time_tolerance_minutes=1
+    time_tolerance_minutes=2
 ):
     """
-    Find a DB train by category and departure time.
+    Find a DB train when HVV only provides a category,
+    e.g. ICE, IC, FLX or DPF.
 
-    Category and departure time are mandatory.
-    Destination is used as an additional preference when available.
-
-    Returns:
-        "ICE 1234"
-        "IC 1234"
-        "DPF 1234"
-
-    or None if no suitable train was found.
+    The train number is taken from the DB timetable.
     """
 
     if not data:
         return None
 
     try:
+
         root = ET.fromstring(data)
 
-    except Exception as e:
+    except ET.ParseError as e:
+
         print(
             "DB Timetable XML Fehler:",
             repr(e)
         )
+
         return None
 
-    wanted_category = normalize(category).upper()
-    wanted_destination = normalize(destination or "").upper()
+    wanted_category = normalize(
+        category
+    ).upper()
+
+    wanted_destination = normalize(
+        destination or ""
+    ).upper()
 
     best_match = None
     best_score = None
 
-    for element in root.iter():
+    for service in root.iter():
 
         tag = (
-            element.tag
+            service.tag
             .split("}")[-1]
             .lower()
         )
@@ -961,7 +855,7 @@ def parse_db_train_by_time(
         dp = None
         ar = None
 
-        for child in element:
+        for child in service:
 
             child_tag = (
                 child.tag
@@ -995,23 +889,38 @@ def parse_db_train_by_time(
         if not train_number:
             continue
 
-        # ==========================================
-        # 1. CATEGORY MUST MATCH
-        # ==========================================
+        # ==================================================
+        # CATEGORY
+        # ==================================================
 
-        if train_category != wanted_category:
-            continue
+        if wanted_category == "DPF":
 
-        # ==========================================
-        # 2. DEPARTURE MUST EXIST
-        # ==========================================
+            if train_category not in (
+                "DPF",
+                "FLX",
+                "IC",
+                "ICE"
+            ):
+                continue
 
-        event = dp if dp is not None else ar
+        else:
+
+            if train_category != wanted_category:
+                continue
+
+        # ==================================================
+        # TIME
+        # ==================================================
+
+        event = (
+            dp
+            if dp is not None
+            else ar
+        )
 
         if event is None:
             continue
 
-        # Prefer changed time, otherwise planned time
         db_time = (
             event.get("ct", "").strip()
             or event.get("pt", "").strip()
@@ -1021,51 +930,40 @@ def parse_db_train_by_time(
             continue
 
         try:
+
             db_departure = datetime.strptime(
                 db_time,
                 "%y%m%d%H%M"
             )
 
         except ValueError:
-            continue
 
-        # ==========================================
-        # 3. TIME MUST MATCH
-        # ==========================================
+            continue
 
         difference_seconds = abs(
             (
-                db_departure -
-                planned_departure
+                db_departure
+                - planned_departure
             ).total_seconds()
         )
 
-        difference_minutes = (
-            difference_seconds / 60
-        )
-
-        if difference_minutes > time_tolerance_minutes:
+        if (
+            difference_seconds
+            > time_tolerance_minutes * 60
+        ):
             continue
 
-        # ==========================================
-        # 4. DESTINATION MATCH
-        # ==========================================
+        # ==================================================
+        # DESTINATION
+        # ==================================================
 
         destination_match = False
 
         if wanted_destination:
 
-            # Search destination information inside
-            # this timetable entry.
-            db_destination_parts = []
+            texts = []
 
-            for child in element.iter():
-
-                child_tag = (
-                    child.tag
-                    .split("}")[-1]
-                    .lower()
-                )
+            for child in service.iter():
 
                 text = (
                     child.text.strip()
@@ -1076,60 +974,55 @@ def parse_db_train_by_time(
                 if not text:
                     continue
 
+                child_tag = (
+                    child.tag
+                    .split("}")[-1]
+                    .lower()
+                )
+
                 if child_tag in (
                     "n",
                     "name",
-                    "eva",
-                    "ext",
-                    "arr",
-                    "dep",
+                    "destination",
+                    "station",
                     "dp",
-                    "destination"
+                    "ar"
                 ):
-                    db_destination_parts.append(
+
+                    texts.append(
                         normalize(text).upper()
                     )
 
-            db_destination_text = " ".join(
-                db_destination_parts
-            )
+            destination_text = " ".join(texts)
 
-            if wanted_destination in db_destination_text:
+            if wanted_destination in destination_text:
+
                 destination_match = True
 
             else:
-                # Also allow partial matching.
-                destination_words = [
+
+                words = [
                     word
                     for word in wanted_destination.split()
                     if len(word) >= 4
                 ]
 
-                if destination_words and all(
-                    word in db_destination_text
-                    for word in destination_words
+                if words and all(
+                    word in destination_text
+                    for word in words
                 ):
+
                     destination_match = True
 
-        # ==========================================
-        # 5. SCORE THE MATCH
-        # ==========================================
-
-        # Smaller score = better match.
-        #
-        # Destination match gets priority,
-        # then the smallest time difference.
-
-        destination_score = (
-            0 if destination_match else 1
-        )
-
         score = (
-            destination_score,
+            0 if destination_match else 1,
             difference_seconds
         )
 
-        if best_score is None or score < best_score:
+        if (
+            best_score is None
+            or score < best_score
+        ):
 
             best_score = score
 
@@ -1140,176 +1033,37 @@ def parse_db_train_by_time(
 
     return best_match
 
-def parse_db_change_by_time(
-    data,
-    category,
-    planned_departure,
-    destination=None,
-    time_tolerance_minutes=3
-):
-    """
-    Find a train in the DB full-change feed by
-    category and departure time.
-
-    Returns:
-        "ICE 1234"
-
-    or None.
-    """
-
-    if not data:
-        return None
-
-    try:
-
-        root = ET.fromstring(data)
-
-    except Exception as e:
-
-        print(
-            "DB Änderungs-XML Fehler:",
-            repr(e)
-        )
-
-        return None
-
-    wanted_category = normalize(
-        category
-    ).upper()
-
-    best_match = None
-    best_difference = None
-
-    for element in root.iter():
-
-        tag = (
-            element.tag
-            .split("}")[-1]
-            .lower()
-        )
-
-        if tag != "s":
-            continue
-
-        tl = None
-        dp = None
-        ar = None
-
-        for child in element:
-
-            child_tag = (
-                child.tag
-                .split("}")[-1]
-                .lower()
-            )
-
-            if child_tag == "tl":
-                tl = child
-
-            elif child_tag == "dp":
-                dp = child
-
-            elif child_tag == "ar":
-                ar = child
-
-        if tl is None:
-            continue
-
-        train_category = (
-            tl.get("c", "")
-            .strip()
-            .upper()
-        )
-
-        train_number = (
-            tl.get("n", "")
-            .strip()
-        )
-
-        if not train_number:
-            continue
-
-        if train_category != wanted_category:
-            continue
-
-        # A departure is what we're looking for.
-        if dp is None:
-            continue
-
-        # For changes:
-        # ct = changed time
-        # pt = planned time
-        db_time = (
-            dp.get("ct", "").strip()
-            or dp.get("pt", "").strip()
-        )
-
-        if not db_time:
-            continue
-
-        try:
-
-            db_departure = datetime.strptime(
-                db_time,
-                "%y%m%d%H%M"
-            )
-
-        except ValueError:
-
-            continue
-
-        difference = abs(
-            (
-                db_departure -
-                planned_departure
-            ).total_seconds()
-        )
-
-        difference_minutes = (
-            difference / 60
-        )
-
-        if (
-            difference_minutes
-            > time_tolerance_minutes
-        ):
-            continue
-
-        if (
-            best_difference is None
-            or difference < best_difference
-        ):
-
-            best_difference = difference
-
-            best_match = (
-                f"{train_category} "
-                f"{train_number}"
-            )
-
-    return best_match
-
 def lookup_db_train_by_time(
+    station_id,
     category,
-    station_name,
+    train_number,
     planned_departure,
-    destination=None
+    destination
 ):
     """
-    Look up an IC/ICE/DPF train using DB Timetables.
+    Look up a specific DB train.
 
-    First checks the planned timetable (/plan).
+    Search order:
+        1. planned timetable, same hour
+        2. previous hour
+        3. next hour
+        4. full changes feed
 
-    If no train is found, falls back to the full
-    timetable changes feed (/fchg).
-
-    The result is cached.
+    Result is cached.
     """
+
+    category = normalize(category).upper()
+    train_number = str(train_number).strip()
+    destination = normalize(destination or "")
+
+    if not train_number:
+        return None
 
     cache_key = (
-        normalize(category),
-        normalize(station_name),
-        normalize(destination or ""),
+        "NUMBER",
+        category,
+        train_number,
+        destination.upper(),
         planned_departure.strftime(
             "%y%m%d%H%M"
         )
@@ -1330,127 +1084,127 @@ def lookup_db_train_by_time(
 
             if age < config.DB_CACHE_TIME:
 
+                debug_print(
+                    f"DB Cache HIT: "
+                    f"{category} {train_number}"
+                )
+
                 return cached.get("data")
 
-    eva = config.DB_STATION_EVA
+    # ==================================================
+    # EVA
+    # ==================================================
+
+    eva = getattr(
+        config,
+        "DB_STATION_EVA",
+        None
+    )
 
     if not eva:
+
+        eva = get_db_station_eva(
+            config.STATION_NAME
+        )
+
+    if not eva:
+
         print(
-            "DB_STATION_EVA ist nicht gesetzt."
+            f"Keine DB EVA-Nummer für "
+            f"'{config.STATION_NAME}' verfügbar."
         )
 
         return None
 
+    eva = str(eva).strip()
+
     # ==================================================
-    # 1. TRY PLANNED TIMETABLE
+    # HOURS TO CHECK
     # ==================================================
 
-    date_string = planned_departure.strftime(
-        "%y%m%d"
-    )
-
-    hour = planned_departure.hour
-
-    data = get_db_plan(
-        eva,
-        date_string,
-        hour
-    )
-
-    result = parse_db_train_by_time(
-        data,
-        category,
+    hours_to_check = [
+        planned_departure - timedelta(hours=1),
         planned_departure,
-        destination=destination
-    )
+        planned_departure + timedelta(hours=1)
+    ]
 
-    if result:
+    checked = set()
+    result = None
 
-        print(
-            f"DB Zug gefunden: {result} "
-            f"(Plan {planned_departure.strftime('%H:%M')})"
+    for check_time in hours_to_check:
+
+        key = (
+            check_time.strftime("%y%m%d"),
+            check_time.hour
         )
 
-    # ==================================================
-    # 2. TRY PREVIOUS HOUR
-    # ==================================================
+        if key in checked:
+            continue
 
-    if result is None:
-
-        previous_hour = (
-            planned_departure
-            - timedelta(hours=1)
-        )
+        checked.add(key)
 
         data = get_db_plan(
             eva,
-            previous_hour.strftime("%y%m%d"),
-            previous_hour.hour
+            key[0],
+            key[1]
         )
+
+        if not data:
+            continue
 
         result = parse_db_train_by_time(
             data,
             category,
-            planned_departure,
-            destination=destination
-        )
-
-    # ==================================================
-    # 3. TRY NEXT HOUR
-    # ==================================================
-
-    if result is None:
-
-        next_hour = (
-            planned_departure
-            + timedelta(hours=1)
-        )
-
-        data = get_db_plan(
-            eva,
-            next_hour.strftime("%y%m%d"),
-            next_hour.hour
-        )
-
-        result = parse_db_train_by_time(
-            data,
-            category,
-            planned_departure,
-            destination=destination
-        )
-
-    # ==================================================
-    # 4. FALL BACK TO FULL CHANGES
-    # ==================================================
-
-    if result is None:
-
-        print(
-            f"DB Plan leer / kein Treffer für "
-            f"{category} um "
-            f"{planned_departure.strftime('%H:%M')}"
-        )
-
-        change_data = get_db_changes(
-            eva
-        )
-
-        result = parse_db_change_by_time(
-            change_data,
-            category,
+            train_number,
             planned_departure,
             destination=destination
         )
 
         if result:
-
-            print(
-                f"DB Zug gefunden: {result} "
-                f"(Änderung {planned_departure.strftime('%H:%M')})"
-            )
+            break
 
     # ==================================================
-    # CACHE RESULT
+    # FCHG FALLBACK
+    # ==================================================
+
+    if result is None:
+
+        print(
+            f"DB Plan: kein Treffer für "
+            f"{category} {train_number} "
+            f"um {planned_departure.strftime('%H:%M')}"
+        )
+
+        change_data = get_db_changes(eva)
+
+        if change_data:
+
+            result = parse_db_change_by_time(
+                change_data,
+                category,
+                planned_departure,
+                destination=destination
+            )
+
+            # Make sure fchg didn't return a different
+            # train number.
+            if result:
+
+                result_category, _, result_number = (
+                    result.partition(" ")
+                )
+
+                if result_number != train_number:
+
+                    debug_print(
+                        "DB FCHG returned different train:",
+                        result
+                    )
+
+                    result = None
+
+    # ==================================================
+    # CACHE
     # ==================================================
 
     with db_cache_lock:
@@ -1471,125 +1225,150 @@ def lookup_db_train_by_time(
     else:
 
         print(
-            f"DB Zug nicht gefunden für "
-            f"{category} um "
-            f"{planned_departure.strftime('%H:%M')}"
+            f"DB Zug nicht gefunden: "
+            f"{category} {train_number} "
+            f"um {planned_departure.strftime('%H:%M')}"
         )
 
     return result
 
+
 def get_hvv_data():
-    url = config.HVV_API_URL + "/gti/public/departureList"
+    """Load departures from the HVV Geofox API and cross-reference with DB IRIS for ICE/DB trains."""
+    url = config.HVV_API_URL.rstrip("/") + "/gti/public/departureList"
     now = datetime.now()
+    station_id = str(config.STATION_ID).strip()
+    station_name = str(config.STATION_NAME).strip()
 
     payload = {
         "language": "de",
         "version": 63,
-        "station": {
-            "id": config.STATION_ID,
-            "name": config.STATION_NAME,
-            "type": "STATION"
-        },
-        "time": {
-            "date": now.strftime("%d.%m.%Y"),
-            "time": now.strftime("%H:%M")
-        },
+        "station": {"id": station_id, "name": station_name, "type": "STATION"},
+        "time": {"date": now.strftime("%d.%m.%Y"), "time": now.strftime("%H:%M")},
         "maxList": 10,
         "maxTimeOffset": 720,
         "useRealtime": True,
         "full": True,
         "showBroadcastRelevant": True
     }
-
     body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
-
     headers = {
         "geofox-auth-user": credentials.HVV_API_USER,
         "geofox-auth-signature": get_signature(body),
         "geofox-auth-type": "HmacSHA1",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "TransitMatrix"
     }
-
-    request = urllib.request.Request(
-        url,
-        data=body.encode("utf-8"),
-        headers=headers,
-        method="POST"
-    )
+    request = urllib.request.Request(url, data=body.encode("utf-8"), headers=headers, method="POST")
 
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        if e.code in (429, 503):
-            err_code = str(e.code)
-            print(f"HVV API HTTP Fehler {err_code} empfangen.")
-
-            if e.code == 429:
-                return [
-                    {"linie": "", "ziel": "HTTP 429", "plan": "", "zeit": "", "nodata": True},
-                    {"linie": "", "ziel": "TOO MANY", "plan": "", "zeit": "", "nodata": True},
-                    {"linie": "", "ziel": "REQUESTS", "plan": "", "zeit": "", "nodata": True}
-                ]
-            else:  # 503
-                return [
-                    {"linie": "", "ziel": "HTTP 503", "plan": "", "zeit": "", "nodata": True},
-                    {"linie": "", "ziel": "SERVICE", "plan": "", "zeit": "", "nodata": True},
-                    {"linie": "", "ziel": "UNAVAILABLE", "plan": "", "zeit": "", "nodata": True}
-                ]
-        raise e
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+    except Exception as e:
+        print(f"HVV API Fehler: {e}")
+        return [{"linie": "", "ziel": "API ERROR", "plan": "", "zeit": "", "nodata": True}]
 
     result = []
-
     for dep in data.get("departures", []):
+        # DELAY
         delay_seconds = dep.get("delay")
-
         if delay_seconds is not None:
-            delay = int(delay_seconds / 60)
+            try:
+                delay = int(int(delay_seconds) / 60)
+            except (TypeError, ValueError):
+                delay = 0
             delay_found = True
         else:
             delay = 0
             delay_found = False
 
-        offset = dep.get("timeOffset", 0)
+        # TIME OFFSET (Realtime offset from now)
+        try:
+            offset = int(dep.get("timeOffset", 0))
+        except (TypeError, ValueError):
+            offset = 0
 
-        zeit = "sofort" if offset <= 0 else f"in {offset} Min"
-        if dep.get("cancelled"):
-            zeit = "fällt aus"
+        # Filter out trains that departed more than 1 minute ago
+        if offset < -1 and not dep.get("cancelled"):
+            continue
 
         target_time = now + timedelta(minutes=offset)
         planned_departure = target_time - timedelta(minutes=delay)
         plan_time = planned_departure.strftime("%H:%M")
 
-        # Get line information FIRST
+        if offset <= 0:
+            zeit = "sofort"
+        else:
+            zeit = f"in {offset} Min"
+        if dep.get("cancelled"):
+            zeit = "fällt aus"
+
+        # LINE EXTRACT & DIRECTION
         line = dep.get("line", {})
-        line_name = line.get("name", "").strip()
-        line_direction = line.get("direction", "")
+        line_name = str(line.get("name", "")).strip()
+        line_direction = str(line.get("direction", "")).strip()
+
+        # Extract Category & Train Number (handles "ICE 582", "ICE582", "RE 80", etc.)
+        match = re.match(r"^([A-Za-z]+)\s*(\d+)$", line_name)
+        if match:
+            category = match.group(1).upper()
+            train_number = match.group(2)
+        else:
+            parts = line_name.split()
+            category = parts[0].upper() if parts else ""
+            train_number = parts[1] if len(parts) > 1 else ""
 
         # ==========================================
-        # DB LOOKUP FÜR IC / ICE / DPF (NACH ZEIT)
+        # DB TIMETABLE CROSS-REFERENCE LOGIC
         # ==========================================
-        if line_name.upper() in ("ICE", "IC", "DPF"):
+        #
+        # Only query DB when HVV gives us the category
+        # WITHOUT a train number.
+        #
+        # Examples:
+        #   ICE       -> DB lookup needed
+        #   IC        -> DB lookup needed
+        #   RE        -> DB lookup needed
+        #   RB        -> DB lookup needed
+        #
+        #   ICE2022   -> already complete, no lookup
+        #   RE80      -> already complete, no lookup
+        #   RB31      -> already complete, no lookup
+        #
+        db_categories = {
+            "ICE",
+            "IC",
+            "EC",
+            "ECE",
+            "RE",
+            "RB",
+            "IRE",
+            "FLX",
+            "DPF"
+        }
+
+        if category in db_categories and not train_number:
+
             try:
-                db_name = lookup_db_train_by_time(
-                    category=line_name,
-                    station_name=config.STATION_NAME,
+
+                db_match = lookup_db_train_without_number(
+                    category=category,
                     planned_departure=planned_departure,
                     destination=line_direction
                 )
 
-                if db_name:
-                    line_name = db_name
+                if db_match:
+                    line_name = db_match
 
             except Exception as e:
-                print(f"DB Lookup fehlgeschlagen für {line_name} um {plan_time}:", repr(e))
 
-        # Die DB Infos müssen gar nicht ins result, da line_name jetzt korrekt ist.
+                debug_print(
+                    f"DB lookup failed for "
+                    f"{category}: {e}"
+                )
         result.append({
-            "station": {
-                "id": config.STATION_ID,
-                "name": config.STATION_NAME
-            },
+            "station": {"id": station_id, "name": station_name},
             "linie": line_name,
             "ziel": line_direction,
             "plan": plan_time,
@@ -1599,28 +1378,240 @@ def get_hvv_data():
             "target_time": target_time
         })
 
+    # Sort final result chronologically by the true target realtime
+    result.sort(key=lambda x: x["target_time"])
+    return result
+
+def lookup_db_train_without_number(
+    category,
+    planned_departure,
+    destination
+):
+    """
+    Find a DB train when HVV only provides the category.
+
+    Example:
+        HVV -> ICE
+        DB  -> ICE 123
+
+    Searches:
+        previous hour
+        current hour
+        next hour
+        /fchg fallback
+    """
+
+    category = normalize(category).upper()
+    destination = normalize(destination or "")
+
+    cache_key = (
+        "WITHOUT_NUMBER",
+        category,
+        destination.upper(),
+        planned_departure.strftime(
+            "%y%m%d%H%M"
+        )
+    )
+
+    with db_cache_lock:
+
+        cached = db_train_cache.get(
+            cache_key
+        )
+
+        if cached:
+
+            age = (
+                time.time()
+                - cached["timestamp"]
+            )
+
+            if age < config.DB_CACHE_TIME:
+
+                debug_print(
+                    f"DB Cache HIT: "
+                    f"{category} "
+                    f"{planned_departure.strftime('%H:%M')}"
+                )
+
+                return cached.get("data")
+
+    # ==================================================
+    # EVA
+    # ==================================================
+
+    eva = getattr(
+        config,
+        "DB_STATION_EVA",
+        None
+    )
+
+    if not eva:
+
+        eva = get_db_station_eva(
+            config.STATION_NAME
+        )
+
+    if not eva:
+
+        print(
+            f"DB: Keine EVA-Nummer für "
+            f"{config.STATION_NAME}"
+        )
+
+        return None
+
+    eva = str(eva).strip()
+
+    print(
+        f"DB Suche ohne Zugnummer: "
+        f"{category} | "
+        f"{planned_departure.strftime('%d.%m.%Y %H:%M')} | "
+        f"Ziel: {destination} | "
+        f"EVA: {eva}"
+    )
+
+    result = None
+
+    # ==================================================
+    # PLAN
+    # ==================================================
+
+    hours_to_check = [
+        planned_departure - timedelta(hours=1),
+        planned_departure,
+        planned_departure + timedelta(hours=1)
+    ]
+
+    checked = set()
+
+    for check_time in hours_to_check:
+
+        key = (
+            check_time.strftime("%y%m%d"),
+            check_time.hour
+        )
+
+        if key in checked:
+            continue
+
+        checked.add(key)
+
+        data = get_db_plan(
+            eva,
+            key[0],
+            key[1]
+        )
+
+        if not data:
+            continue
+
+        result = find_db_train_by_time(
+            data,
+            category,
+            planned_departure,
+            destination
+        )
+
+        if result:
+            break
+
+    # ==================================================
+    # FCHG
+    # ==================================================
+
+    if result is None:
+
+        print(
+            f"DB Plan: kein {category}-Treffer für "
+            f"{planned_departure.strftime('%H:%M')}"
+        )
+
+        change_data = get_db_changes(eva)
+
+        if change_data:
+
+            result = parse_db_change_by_time(
+                change_data,
+                category,
+                planned_departure,
+                destination=destination
+            )
+
+    # ==================================================
+    # CACHE
+    # ==================================================
+
+    with db_cache_lock:
+
+        db_train_cache[cache_key] = {
+            "timestamp": time.time(),
+            "data": result
+        }
+
+    if result:
+
+        print(
+            f"DB Mapping ohne HVV-Nummer: "
+            f"{category} -> {result}"
+        )
+
+    else:
+
+        print(
+            f"DB Zug nicht gefunden: "
+            f"{category} "
+            f"um {planned_departure.strftime('%H:%M')}"
+        )
+
     return result
 
 def is_long_distance_train(line):
     line = normalize(line)
 
     return bool(re.fullmatch(
-        r"(ICE|IC|DPF)\s*\d+",
+        r"(ICE|IC|DPF|FLX)\s*\d+",
         line
     ))
 
 def db_api_get(path):
     """
     Perform a GET request against the DB Timetables API.
+
+    The DB API uses:
+        DB-Client-ID
+        DB-Api-Key
+
+    Returns:
+        bytes
+        or None on failure
     """
 
-    url = config.DB_API_URL.rstrip("/") + "/" + path.lstrip("/")
+    base_url = config.DB_API_URL.rstrip("/")
+    clean_path = "/" + path.lstrip("/")
+
+    url = base_url + clean_path
+
+    client_id = str(
+        getattr(credentials, "DB_CLIENT_ID", "")
+    ).strip()
+
+    api_key = str(
+        getattr(credentials, "DB_API_KEY", "")
+    ).strip()
+
+    if not client_id or not api_key:
+        print(
+            "DB API credentials missing. "
+            "Check credentials.py."
+        )
+        return None
 
     headers = {
-        "DB-Client-ID": credentials.DB_CLIENT_ID,
-        "DB-Api-Key": credentials.DB_API_KEY,
+        "DB-Client-ID": client_id,
+        "DB-Api-Key": api_key,
         "Accept": "application/xml",
-        "User-Agent": "TransitMatrix"
+        "User-Agent": "TransitMatrix/1.0"
     }
 
     request = urllib.request.Request(
@@ -1643,16 +1634,37 @@ def db_api_get(path):
             )
 
             print(
-                f"DB Content-Type: "
-                f"{response.headers.get('Content-Type')}"
+                "DB Content-Type:",
+                response.headers.get("Content-Type", "")
             )
 
             print(
-                f"DB Response length: "
-                f"{len(data)} bytes"
+                "DB Response length:",
+                len(data),
+                "bytes"
             )
 
-            print(
+            if config.DEBUG:
+                try:
+                    debug_file = (
+                        Path(__file__).resolve().parent
+                        / "db_timetable_debug.xml"
+                    )
+
+                    debug_file.write_bytes(data)
+
+                    debug_print(
+                        "DB debug XML written:",
+                        debug_file.name
+                    )
+
+                except OSError as e:
+                    debug_print(
+                        "Could not write DB debug XML:",
+                        repr(e)
+                    )
+
+            debug_print(
                 "DB Response:",
                 data[:500]
             )
@@ -1661,9 +1673,41 @@ def db_api_get(path):
 
     except urllib.error.HTTPError as e:
 
+        try:
+            error_body = e.read().decode(
+                "utf-8",
+                errors="replace"
+            )
+        except Exception:
+            error_body = ""
+
         print(
             f"DB Timetables HTTP Fehler "
             f"{e.code}: {url}"
+        )
+
+        if error_body:
+            debug_print(
+                "DB error response:",
+                error_body[:500]
+            )
+
+        return None
+
+    except urllib.error.URLError as e:
+
+        print(
+            "DB Timetables Netzwerkfehler:",
+            repr(e)
+        )
+
+        return None
+
+    except TimeoutError:
+
+        print(
+            "DB Timetables Timeout:",
+            url
         )
 
         return None
@@ -1671,74 +1715,242 @@ def db_api_get(path):
     except Exception as e:
 
         print(
-            f"DB Timetables Fehler: {repr(e)}"
+            "DB Timetables Fehler:",
+            repr(e)
         )
 
         return None
 
 def get_db_station_eva(station_name):
     """
-    Find the DB EVA number for a station name from config, cache, or API.
+    Find the DB EVA number for a station.
+
+    Search order:
+        1. config.DB_STATION_EVA
+        2. config.STATION_EVA_MAP
+        3. runtime cache
+        4. DB /station/{pattern}
+
+    Returns:
+        EVA number as string
+        or None
     """
+
     if not station_name:
         return None
 
-    clean_name = station_name.strip()
-    norm_search = normalize(clean_name).upper()
+    clean_name = str(station_name).strip()
 
-    # 1. READ DIRECTLY FROM CONFIG.PY
-    for config_attr in ("STATION_EVA_MAP",):
-        station_dict = getattr(config, config_attr, None)
-        if isinstance(station_dict, dict):
-            # Check exact key match
-            if clean_name in station_dict:
-                return str(station_dict[clean_name])
+    if not clean_name:
+        return None
 
-            # Check case-insensitive / normalized match
-            for key, val in station_dict.items():
-                if normalize(str(key)).upper() == norm_search:
-                    return str(val)
+    normalized_name = normalize(clean_name).upper()
 
-    # 2. CHECK RUNTIME CACHE
+    # ==================================================
+    # 1. DIRECT CONFIG VALUE
+    # ==================================================
+
+    configured_eva = getattr(
+        config,
+        "DB_STATION_EVA",
+        None
+    )
+
+    if configured_eva:
+
+        eva = str(configured_eva).strip()
+
+        if eva.isdigit():
+            return eva
+
+    # ==================================================
+    # 2. STATION EVA MAP
+    # ==================================================
+
+    station_map = getattr(
+        config,
+        "STATION_EVA_MAP",
+        None
+    )
+
+    if isinstance(station_map, dict):
+
+        # Exact match
+        if clean_name in station_map:
+
+            eva = str(
+                station_map[clean_name]
+            ).strip()
+
+            if eva.isdigit():
+                return eva
+
+        # Normalized match
+        for key, value in station_map.items():
+
+            if normalize(
+                str(key)
+            ).upper() == normalized_name:
+
+                eva = str(value).strip()
+
+                if eva.isdigit():
+                    return eva
+
+    # ==================================================
+    # 3. RUNTIME CACHE
+    # ==================================================
+
+    cache_key = (
+        "STATION_EVA",
+        normalized_name
+    )
+
     with db_cache_lock:
-        if norm_search in db_train_cache:
-            cached = db_train_cache[norm_search]
-            if cached.get("type") == "station":
-                return cached.get("eva")
 
-    # 3. FALLBACK TO DB API ONLY IF NOT IN CONFIG
-    encoded_name = urllib.parse.quote(clean_name, safe="")
-    data = db_api_get(f"/station/{encoded_name}")
+        cached = db_train_cache.get(
+            cache_key
+        )
+
+        if cached:
+
+            if cached.get("type") == "station":
+
+                eva = str(
+                    cached.get("eva", "")
+                ).strip()
+
+                if eva.isdigit():
+                    return eva
+
+    # ==================================================
+    # 4. DB API
+    # ==================================================
+
+    encoded_name = urllib.parse.quote(
+        clean_name,
+        safe=""
+    )
+
+    data = db_api_get(
+        f"/station/{encoded_name}"
+    )
 
     if not data:
-        print(f"Keine DB EVA-Nummer für '{station_name}' gefunden.")
+
+        print(
+            f"Keine DB EVA-Nummer für "
+            f"'{clean_name}' gefunden."
+        )
+
         return None
 
     try:
+
         root = ET.fromstring(data)
-    except Exception as e:
-        print("DB Station XML konnte nicht gelesen werden:", repr(e))
+
+    except ET.ParseError as e:
+
+        print(
+            "DB Station XML konnte "
+            "nicht gelesen werden:",
+            repr(e)
+        )
+
         return None
 
-    eva = None
-    for element in root.iter():
-        tag = element.tag.lower()
-        eva_attr = element.get("eva") or (element.text.strip() if element.text else None)
-        if (tag.endswith("eva") or tag.endswith("evanumber") or element.get("eva")) and eva_attr and eva_attr.isdigit():
-            eva = eva_attr
-            break
+    # ==================================================
+    # FIND EVA ATTRIBUTE
+    # ==================================================
 
-    if eva:
+    candidates = []
+
+    for element in root.iter():
+
+        tag = (
+            element.tag
+            .split("}")[-1]
+            .lower()
+        )
+
+        eva = element.get("eva")
+
+        if eva:
+
+            eva = str(eva).strip()
+
+            if eva.isdigit():
+
+                candidates.append(
+                    (
+                        tag,
+                        eva,
+                        (
+                            element.text.strip()
+                            if element.text
+                            else ""
+                        )
+                    )
+                )
+
+    # Prefer station elements.
+    for tag, eva, text in candidates:
+
+        if tag in (
+            "station",
+            "stop",
+            "stopplace"
+        ):
+
+            if (
+                not text
+                or normalized_name in normalize(text).upper()
+                or normalize(text).upper() in normalized_name
+            ):
+
+                with db_cache_lock:
+
+                    db_train_cache[cache_key] = {
+                        "type": "station",
+                        "eva": eva,
+                        "timestamp": time.time()
+                    }
+
+                print(
+                    f"DB Station gefunden: "
+                    f"{clean_name} -> EVA {eva}"
+                )
+
+                return eva
+
+    # ==================================================
+    # FALLBACK: ANY EVA ATTRIBUTE
+    # ==================================================
+
+    if candidates:
+
+        eva = candidates[0][1]
+
         with db_cache_lock:
-            db_train_cache[norm_search] = {
+
+            db_train_cache[cache_key] = {
                 "type": "station",
                 "eva": eva,
                 "timestamp": time.time()
             }
-        print(f"DB Station gefunden: {station_name} -> EVA {eva}")
+
+        print(
+            f"DB Station gefunden: "
+            f"{clean_name} -> EVA {eva}"
+        )
+
         return eva
 
-    print(f"Keine DB EVA-Nummer für '{station_name}' gefunden.")
+    print(
+        f"Keine DB EVA-Nummer für "
+        f"'{clean_name}' gefunden."
+    )
+
     return None
 
 def get_db_plan(eva_no, date, hour):
@@ -1799,19 +2011,32 @@ def get_db_changes(eva_no):
     """
     Download and cache the DB full-change timetable.
 
-    /fchg/{evaNo} contains known timetable changes
-    from now into the future.
+    Endpoint:
+        /fchg/{evaNo}
+
+    The DB API documents /fchg/{evaNo} as the endpoint
+    for current timetable changes.
     """
 
-    cache_key = str(eva_no)
+    if not eva_no:
+        return None
+
+    eva_no = str(eva_no).strip()
+
+    cache_key = eva_no
 
     with db_cache_lock:
 
-        cached = db_fchg_cache.get(cache_key)
+        cached = db_fchg_cache.get(
+            cache_key
+        )
 
         if cached:
 
-            age = time.time() - cached["timestamp"]
+            age = (
+                time.time()
+                - cached["timestamp"]
+            )
 
             cache_time = getattr(
                 config,
@@ -1820,12 +2045,21 @@ def get_db_changes(eva_no):
             )
 
             if age < cache_time:
+
+                debug_print(
+                    f"DB FCHG cache HIT: {eva_no}"
+                )
+
                 return cached["data"]
 
-    path = f"/fchg/{eva_no}"
+    path = (
+        f"/fchg/"
+        f"{urllib.parse.quote(eva_no, safe='')}"
+    )
 
     print(
-        f"DB Timetable: Lade Änderungen {eva_no}"
+        f"DB Timetable: Lade Änderungen "
+        f"{eva_no}"
     )
 
     data = db_api_get(path)
@@ -1842,7 +2076,259 @@ def get_db_changes(eva_no):
 
     return data
 
-def parse_db_train(data, category, train_number):
+def parse_db_change_by_time(
+    data,
+    wanted_category,
+    planned_departure,
+    destination=None,
+    time_tolerance_minutes=2
+):
+    """
+    Find a train in the DB full-change (/fchg) feed.
+
+    The fchg feed uses the same timetable-style <s>, <tl>,
+    <ar> and <dp> structure as the planned timetable.
+
+    Returns:
+        "ICE 123"
+        "IC 2024"
+        "FLX 1234"
+        or None
+    """
+
+    if not data:
+        return None
+
+    try:
+
+        root = ET.fromstring(data)
+
+    except ET.ParseError as e:
+
+        print(
+            "DB FCHG XML Fehler:",
+            repr(e)
+        )
+
+        return None
+
+    wanted_category = normalize(
+        wanted_category
+    ).upper()
+
+    wanted_destination = normalize(
+        destination or ""
+    ).upper()
+
+    best_match = None
+    best_score = None
+
+    # ==================================================
+    # ITERATE THROUGH SERVICES
+    # ==================================================
+
+    for service in root.iter():
+
+        tag = (
+            service.tag
+            .split("}")[-1]
+            .lower()
+        )
+
+        if tag != "s":
+            continue
+
+        train_info = None
+        departure = None
+        arrival = None
+
+        for child in service:
+
+            child_tag = (
+                child.tag
+                .split("}")[-1]
+                .lower()
+            )
+
+            if child_tag == "tl":
+                train_info = child
+
+            elif child_tag == "dp":
+                departure = child
+
+            elif child_tag == "ar":
+                arrival = child
+
+        if train_info is None:
+            continue
+
+        category = (
+            train_info.get("c", "")
+            .strip()
+            .upper()
+        )
+
+        train_number = (
+            train_info.get("n", "")
+            .strip()
+        )
+
+        if not train_number:
+            continue
+
+        # ==================================================
+        # CATEGORY
+        # ==================================================
+
+        if wanted_category == "DPF":
+
+            if category not in (
+                "DPF",
+                "FLX",
+                "IC",
+                "ICE"
+            ):
+                continue
+
+        else:
+
+            if category != wanted_category:
+                continue
+
+        # ==================================================
+        # TIME
+        # ==================================================
+
+        event = (
+            departure
+            if departure is not None
+            else arrival
+        )
+
+        if event is None:
+            continue
+
+        actual_time = (
+            event.get("ct", "").strip()
+            or event.get("pt", "").strip()
+        )
+
+        if not actual_time:
+            continue
+
+        try:
+
+            service_time = datetime.strptime(
+                actual_time,
+                "%y%m%d%H%M"
+            )
+
+        except ValueError:
+
+            continue
+
+        difference_seconds = abs(
+            (
+                service_time
+                - planned_departure
+            ).total_seconds()
+        )
+
+        if (
+            difference_seconds
+            > time_tolerance_minutes * 60
+        ):
+            continue
+
+        # ==================================================
+        # DESTINATION
+        # ==================================================
+
+        destination_match = False
+
+        if wanted_destination:
+
+            destination_values = []
+
+            # Look at all textual information in this
+            # timetable service.
+            for child in service.iter():
+
+                text = (
+                    child.text.strip()
+                    if child.text
+                    else ""
+                )
+
+                if not text:
+                    continue
+
+                child_tag = (
+                    child.tag
+                    .split("}")[-1]
+                    .lower()
+                )
+
+                if child_tag in (
+                    "n",
+                    "name",
+                    "destination",
+                    "dp",
+                    "ar",
+                    "station"
+                ):
+
+                    destination_values.append(
+                        normalize(text).upper()
+                    )
+
+            destination_text = " ".join(
+                destination_values
+            )
+
+            if wanted_destination in destination_text:
+
+                destination_match = True
+
+            else:
+
+                words = [
+                    word
+                    for word in wanted_destination.split()
+                    if len(word) >= 4
+                ]
+
+                if words and all(
+                    word in destination_text
+                    for word in words
+                ):
+
+                    destination_match = True
+
+        # ==================================================
+        # SCORE
+        # ==================================================
+
+        score = (
+            0 if destination_match else 1,
+            difference_seconds
+        )
+
+        if (
+            best_score is None
+            or score < best_score
+        ):
+
+            best_score = score
+
+            best_match = (
+                f"{category} "
+                f"{train_number}"
+            )
+
+    return best_match
+
+def parse_db_train(data, wanted_category, wanted_train_number):
 
     if not data:
         return None
@@ -1859,7 +2345,7 @@ def parse_db_train(data, category, train_number):
 
         return None
 
-    wanted_number = str(train_number)
+    wanted_number = str(wanted_train_number)
 
     candidates = []
 
@@ -1878,10 +2364,10 @@ def parse_db_train(data, category, train_number):
 
         if (
             normalized == normalize(
-                f"{category} {wanted_number}"
+                f"{wanted_category} {wanted_number}"
             )
             or normalized == normalize(
-                f"{category}{wanted_number}"
+                f"{wanted_category}{wanted_number}"
             )
             or normalized == wanted_number
         ):
@@ -1891,9 +2377,9 @@ def parse_db_train(data, category, train_number):
         return None
 
     result = {
-        "category": category,
-        "number": train_number,
-        "name": f"{category} {train_number}",
+        "category": wanted_category,
+        "number": wanted_number,
+        "name": f"{wanted_category} {wanted_number}",
         "destination": "",
         "origin": "",
         "platform": "",
@@ -1932,29 +2418,29 @@ def parse_db_train(data, category, train_number):
             if not text:
                 continue
 
-            # train number/name
+            # Train number/name
             if (
                 tag.endswith("tl")
                 or tag.endswith("n")
             ):
 
                 if (
-                    category in normalize(text)
-                    or text == train_number
+                    normalize(wanted_category) in normalize(text)
+                    or text == wanted_number
                 ):
                     result["name"] = text
 
-            # destination
+            # Destination
             elif tag.endswith("dp"):
 
                 result["destination"] = text
 
-            # origin
+            # Origin
             elif tag.endswith("ar"):
 
                 result["origin"] = text
 
-            # platform
+            # Platform
             elif tag.endswith("track"):
 
                 result["platform"] = text
@@ -1970,149 +2456,280 @@ def lookup_db_train(
     target_time=None
 ):
     """
-    Look up an IC/ICE/DPF train using DB Timetables.
+    Legacy-compatible DB train lookup.
 
-    The result is cached so the same train is not repeatedly
-    requested from DB.
+    This function is kept because older parts of TransitMatrix
+    may still call it.
+
+    It delegates to lookup_db_train_by_time().
     """
 
     if target_time is None:
         target_time = datetime.now()
 
-    cache_key = (
-        normalize(category),
-        str(train_number),
-        normalize(station_name),
-        target_time.strftime("%Y%m%d%H%M")
-    )
+    category = normalize(category).upper()
+    train_number = str(train_number).strip()
 
-    with db_cache_lock:
-        cached = db_train_cache.get(cache_key)
-
-        if cached:
-            age = time.time() - cached["timestamp"]
-
-            if age < config.DB_CACHE_TIME:
-                return cached.get("data")
-
-    eva = config.DB_STATION_EVA
-
-    if not eva:
+    if not train_number:
         return None
 
-    date_string = target_time.strftime("%Y%m%d")
-    hour = target_time.hour
+    # Use configured EVA if available.
+    # station_name is retained for backwards compatibility.
+    old_station_name = config.STATION_NAME
 
-    data = get_db_plan(
-        eva,
-        date_string,
-        hour
-    )
+    try:
 
-    result = parse_db_train(
-        data,
-        category,
-        train_number
-    )
+        if station_name:
+            config_station_name = station_name
+        else:
+            config_station_name = old_station_name
 
-    # The train might be close to an hour boundary.
-    if result is None:
+        # We do NOT modify config.
+        # We only use it as the fallback station.
 
-        previous_hour = target_time - timedelta(hours=1)
-        next_hour = target_time + timedelta(hours=1)
+        destination = ""
 
-        # Previous hour
-        if previous_hour.date() == target_time.date():
+        cache_key = (
+            "LEGACY",
+            category,
+            train_number,
+            normalize(config_station_name),
+            target_time.strftime(
+                "%y%m%d%H%M"
+            )
+        )
+
+        with db_cache_lock:
+
+            cached = db_train_cache.get(
+                cache_key
+            )
+
+            if cached:
+
+                age = (
+                    time.time()
+                    - cached["timestamp"]
+                )
+
+                if age < config.DB_CACHE_TIME:
+
+                    return cached.get("data")
+
+        eva = getattr(
+            config,
+            "DB_STATION_EVA",
+            None
+        )
+
+        if not eva:
+
+            eva = get_db_station_eva(
+                config_station_name
+            )
+
+        if not eva:
+
+            return None
+
+        eva = str(eva).strip()
+
+        result = None
+
+        hours_to_check = [
+            target_time - timedelta(hours=1),
+            target_time,
+            target_time + timedelta(hours=1)
+        ]
+
+        checked = set()
+
+        for check_time in hours_to_check:
+
+            key = (
+                check_time.strftime("%y%m%d"),
+                check_time.hour
+            )
+
+            if key in checked:
+                continue
+
+            checked.add(key)
 
             data = get_db_plan(
                 eva,
-                previous_hour.strftime("%Y%m%d"),
-                previous_hour.hour
+                key[0],
+                key[1]
             )
 
-            result = parse_db_train(
+            if not data:
+                continue
+
+            result = parse_db_train_by_time(
                 data,
                 category,
-                train_number
+                train_number,
+                target_time
             )
 
-        # Next hour
+            if result:
+                break
+
         if result is None:
 
-            if next_hour.date() == target_time.date():
+            change_data = get_db_changes(eva)
 
-                data = get_db_plan(
-                    eva,
-                    next_hour.strftime("%Y%m%d"),
-                    next_hour.hour
-                )
+            if change_data:
 
-                result = parse_db_train(
-                    data,
+                result = parse_db_change_by_time(
+                    change_data,
                     category,
-                    train_number
+                    target_time
                 )
 
-    with db_cache_lock:
-        db_train_cache[cache_key] = {
-            "timestamp": time.time(),
-            "data": result
-        }
+                # Don't accept another train.
+                if result:
 
-    if result:
+                    parts = result.split(
+                        " ",
+                        1
+                    )
+
+                    if (
+                        len(parts) != 2
+                        or parts[1] != train_number
+                    ):
+
+                        result = None
+
+        with db_cache_lock:
+
+            db_train_cache[cache_key] = {
+                "timestamp": time.time(),
+                "data": result
+            }
+
+        if result:
+
+            print(
+                f"DB Zug gefunden: {result}"
+            )
+
+        else:
+
+            print(
+                f"DB Zug nicht gefunden: "
+                f"{category} {train_number}"
+            )
+
+        return result
+
+    except Exception as e:
+
         print(
-            f"DB Zug gefunden: "
-            f"{category} {train_number}"
-        )
-    else:
-        print(
-            f"DB Zug nicht gefunden: "
-            f"{category} {train_number}"
+            "Legacy DB lookup Fehler:",
+            repr(e)
         )
 
-    return result
+        return None
 
 def get_announcements():
-    url = config.HVV_API_URL + "/gti/public/getAnnouncements"
+    url = (
+        config.HVV_API_URL.rstrip("/")
+        + "/gti/public/getAnnouncements"
+    )
 
     payload = {
         "language": "de",
         "version": 63,
-        "names": ["RE7", "RE70", "782", "185", "X95"],
+        "names": ["RE7", "RE70", "782", "185", "X95","S5"],
         "full": True,
         "showBroadcastRelevant": True,
     }
 
-    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    body = json.dumps(
+        payload,
+        separators=(",", ":"),
+        ensure_ascii=False
+    )
 
     headers = {
         "geofox-auth-user": credentials.HVV_API_USER,
         "geofox-auth-signature": get_signature(body),
         "geofox-auth-type": "HmacSHA1",
         "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "TransitMatrix"
     }
 
-    try:
-        response = requests.post(url, data=body, headers=headers, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.HTTPError as e:
-        if e.response is not None and e.response.status_code in (429, 503):
-            err_code = e.response.status_code
-            print(f"Announcements HTTP Fehler {err_code} empfangen.")
+    request = urllib.request.Request(
+        url,
+        data=body.encode("utf-8"),
+        headers=headers,
+        method="POST"
+    )
 
-            detail_text = "TOO MANY REQUESTS" if err_code == 429 else "SERVICE UNAVAILABLE"
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=10
+        ) as response:
+
+            raw = response.read()
+
+            return json.loads(
+                raw.decode(
+                    "utf-8",
+                    errors="replace"
+                )
+            )
+
+    except urllib.error.HTTPError as e:
+
+        print(
+            f"Announcements HTTP Fehler {e.code}."
+        )
+
+        if e.code in (429, 503):
+
+            if e.code == 429:
+                detail_text = "TOO MANY REQUESTS"
+            else:
+                detail_text = "SERVICE UNAVAILABLE"
 
             return {
                 "announcements": [
                     {
-                        "id": f"HTTP_{err_code}",
-                        "description": f"HTTP FEHLER {err_code} - {detail_text}",
+                        "id": f"HTTP_{e.code}",
+                        "description": (
+                            f"HTTP FEHLER {e.code} - "
+                            f"{detail_text}"
+                        ),
                         "locations": []
                     }
                 ]
             }
-        raise e
+
+        raise
+
+    except urllib.error.URLError as e:
+
+        print(
+            "Announcements Netzwerkfehler:",
+            repr(e)
+        )
+
+        raise
+
+    except json.JSONDecodeError as e:
+
+        print(
+            "Announcements JSON Fehler:",
+            repr(e)
+        )
+
+        raise
+
 
 def parse_announcements(data):
 
@@ -2126,6 +2743,7 @@ def parse_announcements(data):
         ).strip()
 
         locations = []
+        seen_locations = set()
 
         for loc in announcement.get("locations", []):
 
@@ -2134,7 +2752,7 @@ def parse_announcements(data):
             if not line:
                 continue
 
-            locations.append({
+            location = {
                 "line": normalize(line.get("name", "")),
                 "direction": normalize(line.get("direction", "")),
                 "origin": normalize(line.get("origin", "")),
@@ -2152,7 +2770,20 @@ def parse_announcements(data):
                     "bothDirections",
                     True
                 )
-            })
+            }
+
+            # A line/direction combination only needs to occur once.
+            location_key = (
+                location["line"],
+                location["direction"],
+                location["bothDirections"]
+            )
+
+            if location_key in seen_locations:
+                continue
+
+            seen_locations.add(location_key)
+            locations.append(location)
 
         result.append({
             "id": announcement.get("id", ""),
@@ -2263,7 +2894,12 @@ def get_message_text():
     text = msg.get("text", "")
 
     if lines:
-        prefix = "!" + ",".join(lines) + "!: "
+        line_names = get_unique_announcement_lines(msg)
+
+        if line_names:
+            prefix = "!" + ",".join(line_names) + "!: "
+        else:
+            prefix = "!MELDUNG!:"
     else:
         prefix = "!MELDUNG!:"
 
@@ -2282,11 +2918,14 @@ def draw_message(matrix):
     lines = msg.get("lines", [])
 
     if lines:
-        line_names = [loc.get("line", "") if isinstance(loc, dict) else str(loc) for loc in lines]
-        header = "!" + ",".join(line_names) + "!:"
+        line_names = get_unique_announcement_lines(msg)
+
+        if line_names:
+            header = "!" + ",".join(line_names) + ":"
+        else:
+            header = "!MELDUNG!:"
     else:
         header = "!MELDUNG!:"
-
     # ==========================================
     # ZÄHLER LOGIK (z.B. "1/2")
     # ==========================================
@@ -2553,6 +3192,25 @@ def update_messages():
         messages = []
         line_announcements = []
 
+def get_unique_announcement_lines(announcement):
+    """Return each affected line only once for the announcement ticker."""
+
+    unique_lines = []
+    seen = set()
+
+    for location in announcement.get("lines", []):
+        line = normalize(location.get("line", ""))
+
+        if not line:
+            continue
+
+        if line in seen:
+            continue
+
+        seen.add(line)
+        unique_lines.append(line)
+
+    return unique_lines
 
 def update_messages_loop():
 
@@ -2874,40 +3532,108 @@ def normalize(text):
     )
 
 if __name__ == "__main__":
-    # Clean up stale DB timetable XML files from previous runs/crashes on startup
-    cleanup_stale_db_timetable_files()
 
-    # Register exit handler for clean shutdowns
-    atexit.register(shutdown_db_timetable_cleanup)
+    # CLEAN OLD DB FILES BEFORE START
+
+    cleanup_db_timetable_files()
+
+    # CLEAN ON NORMAL PYTHON EXIT
+
+    atexit.register(
+        cleanup_db_timetable_files
+    )
 
     try:
+
+        # ==================================================
+        # DISPLAY INITIALIZATION
+        # ==================================================
+
         if config.DISPLAY_MODE == "LED":
+
             init_led()
+
         elif config.DISPLAY_MODE == "WINDOW":
+
             create_window()
+
         else:
-            raise ValueError(f"Invalid DISPLAY_MODE: {config.DISPLAY_MODE}")
 
-        # 1. Start the main data thread
-        threading.Thread(target=update_data, daemon=True).start()
+            raise ValueError(
+                f"Invalid DISPLAY_MODE: "
+                f"{config.DISPLAY_MODE}"
+            )
 
-        # 2. Start the messages thread ONLY if using HVV
+        # ==================================================
+        # DATA THREAD
+        # ==================================================
+
+        threading.Thread(
+            target=update_data,
+            name="TransitMatrix-Data",
+            daemon=True
+        ).start()
+
+        # ==================================================
+        # ANNOUNCEMENT THREAD
+        # ==================================================
+
         if config.DATA_SOURCE == "HVV":
-            threading.Thread(target=update_messages_loop, daemon=True).start()
 
-        # 3. Start the animation/render loop
-        threading.Thread(target=master_render_loop, daemon=True).start()
+            threading.Thread(
+                target=update_messages_loop,
+                name="TransitMatrix-Messages",
+                daemon=True
+            ).start()
 
-        # 4. Keep the program running
-        if config.DISPLAY_MODE == "WINDOW" and window:
+        # ==================================================
+        # RENDER THREAD
+        # ==================================================
+
+        threading.Thread(
+            target=master_render_loop,
+            name="TransitMatrix-Render",
+            daemon=True
+        ).start()
+
+        # ==================================================
+        # MAIN LOOP
+        # ==================================================
+
+        if (
+            config.DISPLAY_MODE == "WINDOW"
+            and window is not None
+        ):
+
             window.mainloop()
+
         elif config.DISPLAY_MODE == "LED":
+
             while True:
+
                 time.sleep(1)
 
     except KeyboardInterrupt:
-        print("\nProgram stopped.")
+
+        print(
+            "\nProgram stopped by user."
+        )
+
+    except Exception as e:
+
+        print(
+            "\nFatal error:",
+            repr(e)
+        )
+
     finally:
-        # Clean up files created during this run when stopping
+
+        print(
+            "Cleaning up DB timetable files..."
+        )
+
         cleanup_db_timetable_files()
-        sys.exit(0)
+
+        print(
+            "DB Timetable temporary files cleaned up."
+        )

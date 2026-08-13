@@ -4,11 +4,11 @@ from enum import IntEnum
 # ==========================
 # EINSTELLUNGEN
 # ==========================
-STATION_NAME = ""
-STATION_ID = "" #EVA Station ID for ICE MATCH
+STATION_NAME = "Hamburg Hbf"
+STATION_ID = "8002549"
+DB_STATION_EVA = STATION_ID
+
 DATA_SOURCE = "HVV"
-# später: DATA_SOURCE = "HVV"
-# "HVV" = API | "WEB" = Scraping
 
 # ==========================
 # AUSGABE
@@ -17,15 +17,12 @@ DISPLAY_MODE = "WINDOW"
 # "WINDOW" = PC Desktop Vorschau
 # "LED" = echte RGB LED Matrix über GPIO
 
-WEB_URL = f"https://www.vrt-info.de/DM/{STATION_ID}"
-
 HVV_API_URL = "https://gti.geofox.de"
 
 # ==========================
 # DB TIMETABLES API
 # ==========================
 DB_API_URL = "https://apis.deutschebahn.com/db-api-marketplace/apis/timetables/v1"
-DB_STATION_EVA = ""
 
 # DB Timetables lookup cache lifetime in seconds
 DB_CACHE_TIME = 3600
@@ -105,7 +102,7 @@ HEX_COLORS = {
     ColorCode.REGIO:   "#880000",
     ColorCode.WHITE:   "#FFFFFF",
     ColorCode.MESSAGE: "#FF0000",
-    ColorCode.FLX:     "#73D700",
+    ColorCode.FLX:     "#76E806",
 }
 
 if __name__ == "__main__":
