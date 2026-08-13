@@ -2633,16 +2633,27 @@ def lookup_db_train(
 
         return None
 
-def get_announcements():
+def get_announcements(departures=None):
     url = (
         config.HVV_API_URL.rstrip("/")
         + "/gti/public/getAnnouncements"
     )
 
+    # Always keep the permanently monitored lines.
+    announcement_lines = set(config.MONITORED_LINES)
+
+    # Also include lines currently appearing in departures.
+    if departures:
+        for departure in departures:
+            line = departure.get("line")
+
+            if line:
+                announcement_lines.add(str(line).strip())
+
     payload = {
         "language": "de",
         "version": 63,
-        "names": ["RE7", "RE70", "782", "185", "X95","S5"],
+        "names": sorted(announcement_lines),
         "full": True,
         "showBroadcastRelevant": True,
     }
@@ -3146,12 +3157,12 @@ def update_data():
         time.sleep(
             config.DATA_UPDATE
         )
-def update_messages():
+def update_messages(departures):
     global messages
     global line_announcements
 
     try:
-        data = get_announcements()
+        data = get_announcements(departures)
 
         parsed = parse_announcements(data)
 
@@ -3213,14 +3224,10 @@ def get_unique_announcement_lines(announcement):
     return unique_lines
 
 def update_messages_loop():
-
     while True:
-
-        print("Lade Meldungen...")
-
-        update_messages()
-
-        time.sleep(config.DATA_UPDATE)
+        # Pass the global bus_data directly!
+        update_messages(bus_data)
+        time.sleep(60)
 
 # ZENTRALER ANIMATIONS- & RENDER-TAKT
 
