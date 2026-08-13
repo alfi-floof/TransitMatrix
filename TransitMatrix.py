@@ -75,6 +75,11 @@ db_plan_cache = {}
 
 db_cache_lock = threading.Lock()
 
+# Announcement line cache
+announcement_line_cache = {}
+announcement_line_cache_lock = threading.Lock()
+ANNOUNCEMENT_LINE_CACHE_TIME = 3600  # 1 hour
+
 station_names = []
 
 show_station_header = False
@@ -2634,18 +2639,28 @@ def lookup_db_train(
         return None
 
 def get_announcements(departures=None):
+
+    update_announcement_line_cache(departures)
+
+    with announcement_line_cache_lock:
+        announcement_lines = set(
+            announcement_line_cache.keys()
+        )
+
+    print(
+        "Monitoring announcement lines:",
+        ", ".join(sorted(announcement_lines))
+    )
+
     url = (
         config.HVV_API_URL.rstrip("/")
         + "/gti/public/getAnnouncements"
     )
 
-    # Always keep the permanently monitored lines.
-    announcement_lines = set(config.MONITORED_LINES)
-
     # Also include lines currently appearing in departures.
     if departures:
         for departure in departures:
-            line = departure.get("line")
+            line = departure.get("linie")
 
             if line:
                 announcement_lines.add(str(line).strip())
@@ -2844,6 +2859,44 @@ def has_line_announcement(bus):
                 return True
 
     return False
+
+def update_announcement_line_cache(departures):
+    now = time.time()
+
+    with announcement_line_cache_lock:
+
+        # Always keep configured lines
+        for line in config.MONITORED_LINES:
+            line = normalize(str(line).strip())
+
+            if line:
+                announcement_line_cache[line] = now
+
+        # Add currently seen departure lines
+        for departure in departures or []:
+            line = departure.get("linie")
+
+            if line:
+                line = normalize(str(line).strip())
+
+                if line:
+                    announcement_line_cache[line] = now
+
+        # Remove automatically discovered lines after 1 hour
+        expired = [
+            line
+            for line, timestamp in announcement_line_cache.items()
+            if (
+                line not in [
+                    normalize(str(x).strip())
+                    for x in config.MONITORED_LINES
+                ]
+                and now - timestamp > ANNOUNCEMENT_LINE_CACHE_TIME
+            )
+        ]
+
+        for line in expired:
+            del announcement_line_cache[line]
 
 def draw_no_departures(matrix):
 

@@ -4,8 +4,8 @@ from enum import IntEnum
 # ==========================
 # EINSTELLUNGEN
 # ==========================
-STATION_NAME = "Hamburg Hbf"
-STATION_ID = "8002549"
+STATION_NAME = "Timmaspe Ortsmitte"
+STATION_ID = ""
 DB_STATION_EVA = STATION_ID
 
 DATA_SOURCE = "HVV"
@@ -13,7 +13,7 @@ DATA_SOURCE = "HVV"
 # ==========================
 # AUSGABE
 # ==========================
-DISPLAY_MODE = "WINDOW"
+DISPLAY_MODE = "LED"
 # "WINDOW" = PC Desktop Vorschau
 # "LED" = echte RGB LED Matrix über GPIO
 
@@ -52,10 +52,10 @@ NIGHT_END = 7            # bis 07:00
 MONITORED_LINES = [
     "RE7",
     "RE70",
-    "782",
+    "782-AK",
     "185",
     "X95",
-    "S5",
+    "6502",
 ]
 
 # ==========================
