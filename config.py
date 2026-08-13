@@ -49,6 +49,15 @@ NIGHT_BRIGHTNESS = 10    # nachts (0-100)
 NIGHT_START = 21         # ab 21:00 dimmen
 NIGHT_END = 7            # bis 07:00
 
+MONITORED_LINES = [
+    "RE7",
+    "RE70",
+    "782",
+    "185",
+    "X95",
+    "S5",
+]
+
 # ==========================
 # FARBEN
 # ==========================
