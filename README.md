@@ -44,7 +44,7 @@ DB_API_KEY = ""
 ```
 
 ### 4. Launch TransitMatrix
-To start the display application, make sure you have adjused the ``Config.py`` to your liking, then start it. Keep in mind the LED Mode needs root Access for the GPIO.
+To start the display application, make sure you have adjused the ``config.py`` to your liking, then start it. Keep in mind the LED Mode needs root Access for the GPIO.
 
 ``python TransitMatrix.py
 /
