@@ -25,14 +25,23 @@ from hashlib import sha1
 
 import config
 from font import FONT
-import credentials
+try:
+    import credentials
+except ModuleNotFoundError:
+    print("=" * 60)
+    print("ERROR : credentials.py not found!")
+    print("Please rename :")
+    print("credentials.py.example to:")
+    print("'credentials.py'")
+    print("Then enter your API credentials and start TransitMatrix again.")
+    print("=" * 60)
+    sys.exit('ERROR : credentials.py not found')
 
 try:
     from rgbmatrix import RGBMatrix, RGBMatrixOptions
 except ImportError:
     RGBMatrix = None
     RGBMatrixOptions = None
-
 
 # Flush print output immediately
 print = functools.partial(print, flush=True)
