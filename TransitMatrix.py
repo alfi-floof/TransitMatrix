@@ -51,7 +51,7 @@ def debug_print(*args, **kwargs):
         print(*args, **kwargs)
 
 # ==========================
-# FARBEN
+# Colors
 # ==========================
 
 def get_line_color(line_name):
@@ -228,8 +228,6 @@ def create_window():
         return
 
     window = tk.Tk()
-
-    # LINUX-FIX FÜR DAS ICON (with __file__ fallback)
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
     except NameError:
@@ -362,7 +360,7 @@ def show_matrix(matrix):
     elif config.DISPLAY_MODE == "LED":
 
         show_led(matrix)
-# TERMINAL AUSGABE
+# TERMINAL OUTPUT
 
 def print_terminal(data):
 
@@ -415,8 +413,6 @@ def remove_duplicates(data):
             result.append(bus)
 
     return result
-
-# EINZELNES ZEICHEN
 
 def draw_char(matrix,x,y,char,color=1):
 
@@ -471,7 +467,6 @@ def get_text_width(text):
             width += config.CHAR_WIDTH
 
     return width
-# SCROLL
 
 def get_scroll_text(text,offset,length):
 
@@ -530,7 +525,7 @@ def draw_bus_block(matrix, index, bus):
         draw_text(matrix, 0, y_line, line_display, line_color)
 
     # =====================
-    # MINUTEN & "NOW" LOGIK
+    # MINUTES & "NOW" LOGIC
     # =====================
     display_minutes = ""
     zeit_lower = normalize(zeit_raw).lower()
@@ -565,7 +560,7 @@ def draw_bus_block(matrix, index, bus):
         display_minutes = "NOW"
 
     # =====================
-    # ZEIT RECHTS
+    # TIME ON THE RIGHT
     # =====================
     if now_active:
         now_text = "NOW" if blink_state else "   "
@@ -591,7 +586,7 @@ def draw_bus_block(matrix, index, bus):
         draw_text(matrix, time_x, y_line, right_text, color)
 
     # =====================
-    # ZIEL UNTEN
+    # DESTINATION BOTTOM
     # =====================
     show_ring = ziel in ("RING S41", "RING S42")
     max_chars = 8 if show_ring else 10
@@ -676,7 +671,7 @@ def is_line(text):
     ):
         return True
 
-    # Linien wie E/525, H/123, X/45
+    # LINES LIKE E/525, H/123, X/45
     if re.fullmatch(
             r"[A-ZÄÖÜ]+/\d+",
             text
@@ -684,14 +679,14 @@ def is_line(text):
         return True
 
 
-    # normale Linien
+    # Normal Lines
     if re.fullmatch(
                 r"(MEX|ALX|FLX|FEX|ICE|ECE|IRE|ZUG|AST|KAT|SCH|SEV|RNV|AT|CB|RS|RE|RB|RJ|NJ|EN|GI|IC|IR|LM|EC|EV|FM|SB|TB|HS|S|U|A|C|X|M|N|R|F)(?:[\s-]*([A-Z]*\d+))?",
             text
     ):
         return True
 
-    # normale Buslinien (z.B. 782, 501, 12)
+    # normal Buslines (z.B. 782, 501, 12)
     if re.fullmatch(
             r"[A-ZÄÖÜ]*\d+[A-ZÄÖÜ]*",
             text
@@ -836,7 +831,7 @@ def find_db_train_by_time(
     except ET.ParseError as e:
 
         print(
-            "DB Timetable XML Fehler:",
+            "DB Timetable XML Error:",
             repr(e)
         )
 
@@ -1123,8 +1118,8 @@ def lookup_db_train_by_time(
     if not eva:
 
         print(
-            f"Keine DB EVA-Nummer für "
-            f"'{config.STATION_NAME}' verfügbar."
+            f"No DB EVA number available for "
+            f"'{config.STATION_NAME}'."
         )
 
         return None
@@ -1183,9 +1178,9 @@ def lookup_db_train_by_time(
     if result is None:
 
         print(
-            f"DB Plan: kein Treffer für "
+            f"DB Schedule: no match for "
             f"{category} {train_number} "
-            f"um {planned_departure.strftime('%H:%M')}"
+            f"at {planned_departure.strftime('%H:%M')}"
         )
 
         change_data = get_db_changes(eva)
@@ -1199,8 +1194,7 @@ def lookup_db_train_by_time(
                 destination=destination
             )
 
-            # Make sure fchg didn't return a different
-            # train number.
+            # Make sure fchg didn't return a different train number.
             if result:
 
                 result_category, _, result_number = (
@@ -1230,15 +1224,15 @@ def lookup_db_train_by_time(
     if result:
 
         print(
-            f"DB Zug gefunden: "
+            f"DB train found: "
             f"{result} "
-            f"(um {planned_departure.strftime('%H:%M')})"
+            f"(at {planned_departure.strftime('%H:%M')})"
         )
 
     else:
 
         print(
-            f"DB Zug nicht gefunden: "
+            f"DB train not found: "
             f"{category} {train_number} "
             f"um {planned_departure.strftime('%H:%M')}"
         )
@@ -1279,7 +1273,7 @@ def get_hvv_data():
         with urllib.request.urlopen(request, timeout=10) as response:
             data = json.loads(response.read().decode("utf-8", errors="replace"))
     except Exception as e:
-        print(f"HVV API Fehler: {e}")
+        print(f"HVV API Error: {e}")
         return [{"linie": "", "ziel": "API ERROR", "plan": "", "zeit": "", "nodata": True}]
 
     result = []
@@ -1335,20 +1329,6 @@ def get_hvv_data():
         # ==========================================
         # DB TIMETABLE CROSS-REFERENCE LOGIC
         # ==========================================
-        #
-        # Only query DB when HVV gives us the category
-        # WITHOUT a train number.
-        #
-        # Examples:
-        #   ICE       -> DB lookup needed
-        #   IC        -> DB lookup needed
-        #   RE        -> DB lookup needed
-        #   RB        -> DB lookup needed
-        #
-        #   ICE2022   -> already complete, no lookup
-        #   RE80      -> already complete, no lookup
-        #   RB31      -> already complete, no lookup
-        #
         db_categories = {
             "ICE",
             "IC",
@@ -1468,7 +1448,7 @@ def lookup_db_train_without_number(
     if not eva:
 
         print(
-            f"DB: Keine EVA-Nummer für "
+            f"DB: No EVA-Number for "
             f"{config.STATION_NAME}"
         )
 
@@ -1477,7 +1457,7 @@ def lookup_db_train_without_number(
     eva = str(eva).strip()
 
     print(
-        f"DB Suche ohne Zugnummer: "
+        f"DB search without train number: "
         f"{category} | "
         f"{planned_departure.strftime('%d.%m.%Y %H:%M')} | "
         f"Ziel: {destination} | "
@@ -1536,7 +1516,7 @@ def lookup_db_train_without_number(
     if result is None:
 
         print(
-            f"DB Plan: kein {category}-Treffer für "
+            f"DB Plan: No {category}-Hit forr "
             f"{planned_departure.strftime('%H:%M')}"
         )
 
@@ -1565,14 +1545,14 @@ def lookup_db_train_without_number(
     if result:
 
         print(
-            f"DB Mapping ohne HVV-Nummer: "
+            f"DB Mapping without HVV-Number: "
             f"{category} -> {result}"
         )
 
     else:
 
         print(
-            f"DB Zug nicht gefunden: "
+            f"DB Train not found: "
             f"{category} "
             f"um {planned_departure.strftime('%H:%M')}"
         )
@@ -1695,7 +1675,7 @@ def db_api_get(path):
             error_body = ""
 
         print(
-            f"DB Timetables HTTP Fehler "
+            f"DB Timetables HTTP Error "
             f"{e.code}: {url}"
         )
 
@@ -1710,7 +1690,7 @@ def db_api_get(path):
     except urllib.error.URLError as e:
 
         print(
-            "DB Timetables Netzwerkfehler:",
+            "DB Timetables Networkerror:",
             repr(e)
         )
 
@@ -1728,7 +1708,7 @@ def db_api_get(path):
     except Exception as e:
 
         print(
-            "DB Timetables Fehler:",
+            "DB Timetables Error:",
             repr(e)
         )
 
@@ -1852,8 +1832,8 @@ def get_db_station_eva(station_name):
     if not data:
 
         print(
-            f"Keine DB EVA-Nummer für "
-            f"'{clean_name}' gefunden."
+            f"No DB EVA number found for "
+            f"'{clean_name}'."
         )
 
         return None
@@ -1865,8 +1845,8 @@ def get_db_station_eva(station_name):
     except ET.ParseError as e:
 
         print(
-            "DB Station XML konnte "
-            "nicht gelesen werden:",
+            "DB Station XML could not "
+            "be read:",
             repr(e)
         )
 
@@ -1930,7 +1910,7 @@ def get_db_station_eva(station_name):
                     }
 
                 print(
-                    f"DB Station gefunden: "
+                    f"DB Station found: "
                     f"{clean_name} -> EVA {eva}"
                 )
 
@@ -1953,15 +1933,15 @@ def get_db_station_eva(station_name):
             }
 
         print(
-            f"DB Station gefunden: "
+            f"DB Station found: "
             f"{clean_name} -> EVA {eva}"
         )
 
         return eva
 
     print(
-        f"Keine DB EVA-Nummer für "
-        f"'{clean_name}' gefunden."
+        f"No DB EVA number found for "
+        f"'{clean_name}'."
     )
 
     return None
@@ -2002,7 +1982,7 @@ def get_db_plan(eva_no, date, hour):
     )
 
     print(
-        f"DB Timetable: Lade {eva_no} "
+        f"DB Timetable: Load {eva_no} "
         f"{date} {int(hour):02d}:00"
     )
 
@@ -2071,7 +2051,7 @@ def get_db_changes(eva_no):
     )
 
     print(
-        f"DB Timetable: Lade Änderungen "
+        f"DB Timetable: Load changes "
         f"{eva_no}"
     )
 
@@ -2119,7 +2099,7 @@ def parse_db_change_by_time(
     except ET.ParseError as e:
 
         print(
-            "DB FCHG XML Fehler:",
+            "DB FCHG XML Error:",
             repr(e)
         )
 
@@ -2352,7 +2332,7 @@ def parse_db_train(data, wanted_category, wanted_train_number):
     except Exception as e:
 
         print(
-            "DB Timetable XML Fehler:",
+            "DB Timetable XML Error:",
             repr(e)
         )
 
@@ -2625,13 +2605,13 @@ def lookup_db_train(
         if result:
 
             print(
-                f"DB Zug gefunden: {result}"
+                f"DB Train found: {result}"
             )
 
         else:
 
             print(
-                f"DB Zug nicht gefunden: "
+                f"DB Train not found: "
                 f"{category} {train_number}"
             )
 
@@ -2640,7 +2620,7 @@ def lookup_db_train(
     except Exception as e:
 
         print(
-            "Legacy DB lookup Fehler:",
+            "Legacy DB lookup Error:",
             repr(e)
         )
 
@@ -2713,7 +2693,7 @@ def get_announcements(departures=None):
     except urllib.error.HTTPError as e:
 
         print(
-            f"Announcements HTTP Fehler {e.code}."
+            f"Announcements HTTP Error {e.code}."
         )
 
         if e.code in (429, 503):
@@ -2741,7 +2721,7 @@ def get_announcements(departures=None):
     except urllib.error.URLError as e:
 
         print(
-            "Announcements Netzwerkfehler:",
+            "Announcements Networkfehler:",
             repr(e)
         )
 
@@ -2750,7 +2730,7 @@ def get_announcements(departures=None):
     except json.JSONDecodeError as e:
 
         print(
-            "Announcements JSON Fehler:",
+            "Announcements JSON Error:",
             repr(e)
         )
 
@@ -2994,7 +2974,7 @@ def draw_message(matrix):
     else:
         header = "!MELDUNG!:"
     # ==========================================
-    # ZÄHLER LOGIK (z.B. "1/2")
+    # Counter Logic (z.B. "1/2")
     # ==========================================
     total_msgs = len(messages)
     show_counter = False
@@ -3002,21 +2982,21 @@ def draw_message(matrix):
     counter_width = 0
 
     if total_msgs > 1:
-        # Zähler für 2 Sekunden anzeigen, dann 3 Sekunden ausblenden
+        # Display the counter for 2 seconds, then hide it for 3 seconds.
         if int(time.time()) % 5 >= 3:
             show_counter = True
             counter_text = f"{current_message + 1}/{total_msgs}"
             counter_width = get_text_width(counter_text)
 
-    # Berechnen, wie viel Platz für den Header bleibt
+    # Calculate how much space remains for the header.
     available_pixels = config.WIDTH
     if show_counter:
-        available_pixels -= (counter_width + 2) # Platz für Zähler + etwas Abstand abziehen
+        available_pixels -= (counter_width + 2) # Deduct space for the meter + some clearance.
 
     max_header_chars = available_pixels // config.CHAR_WIDTH
 
     # ==========================================
-    # KOPFZEILE (LINIEN) ZEICHNEN
+    # DRAW HEADER (LINES)
     # ==========================================
     if get_text_width(header) > available_pixels:
         header_display = get_scroll_text(
@@ -3027,16 +3007,16 @@ def draw_message(matrix):
     else:
         header_display = header
 
-    # Kopfzeile in Rot (ColorCode.DELAY)
+    # Header in red (ColorCode.DELAY)
     draw_text(matrix, 0, 48, header_display, config.ColorCode.DELAY)
 
-    # Zähler einblenden (in Gelb, damit er sich abhebt)
+    # Show Counter
     if show_counter:
         counter_x = config.WIDTH - counter_width
         draw_text(matrix, counter_x, 48, counter_text, config.ColorCode.DEFAULT)
 
     # ==========================================
-    # MELDUNGSTEXT SCROLLEN
+    # SCROLL MESSAGE TEXT
     # ==========================================
     text = normalize(msg.get("text", "")) + " +++ "
     text_scroll = get_scroll_text(
@@ -3053,7 +3033,7 @@ def draw_reload_bar(matrix):
     global reload_progress
     global data_status
 
-    # letzte Zeile löschen
+    # delete last line
     for x in range(config.WIDTH):
         set_pixel(
             matrix,
@@ -3062,13 +3042,13 @@ def draw_reload_bar(matrix):
             0
         )
 
-    # Farbe abhängig vom Verbindungsstatus
+    # Color depends on connection status
     if data_status == "OFFLINE":
         bar_color = config.ColorCode.DELAY
     else:
         bar_color = config.ColorCode.OK
 
-    # Fortschrittsbalken
+    # Progress bar
     for x in range(reload_progress):
         set_pixel(
             matrix,
@@ -3096,7 +3076,7 @@ def update_display():
     else:
         max_departures = 3 if show_station_header else 4
 
-        # ÄNDERUNG: Wenn Meldungen da sind, IMMER auf 3 begrenzen
+        #If there are notifications, ALWAYS limit to 3.
         if messages:
             max_departures = 3
 
@@ -3110,10 +3090,10 @@ def update_display():
         if messages:
             draw_message(matrix)
 
-    # immer anzeigen
+    # always show
     draw_reload_bar(matrix)
     show_matrix(matrix)
-# DATEN
+# DATA
 
 def update_data():
     global bus_data
@@ -3126,7 +3106,7 @@ def update_data():
     global next_reload_pixel_time
 
     while True:
-        print("Lade Abfahrten...")
+        print("Loading departures...")
         data = []
 
         try:
@@ -3135,7 +3115,7 @@ def update_data():
                 data_status = "OK"
 
         except Exception as e:
-            print("FEHLER BEIM LADEN DER DATEN:", repr(e))
+            print("ERROR LOADING DATA:", repr(e))
             data_status = "OFFLINE"
             data = []
 
@@ -3222,37 +3202,37 @@ def update_messages(departures):
 
         parsed = parse_announcements(data)
 
-        # Alle Meldungen für den Meldungsticker
+        # All updates for the announcement ticker
         messages = parsed
 
-        # Unabhängig davon für das ! an den Abfahrten
+        # Regardless of the ! at the departures
         line_announcements = parsed
 
         print(
-            "Meldungen geladen:",
+            "Announcement loaded:",
             len(messages)
         )
 
         for announcement in line_announcements:
             print(
-                "  Meldung:",
+                "  Announcement:",
                 announcement.get("text", "")[:100]
             )
 
             for location in announcement.get("lines", []):
                 print(
-                    "    Linie:",
+                    "    Line:",
                     location.get("line"),
-                    "| Richtung:",
+                    "| Direction:",
                     location.get("direction"),
-                    "| beide:",
+                    "| Both:",
                     location.get("bothDirections")
                 )
 
     except Exception as e:
 
         print(
-            "Meldungen konnten nicht geladen werden:",
+            "Announcements could not be loaded:",
             e
         )
 
@@ -3285,7 +3265,7 @@ def update_messages_loop():
         update_messages(bus_data)
         time.sleep(60)
 
-# ZENTRALER ANIMATIONS- & RENDER-TAKT
+# CENTRAL ANIMATION & RENDERING CLOCK
 
 def ensure_scroll_arrays():
 
@@ -3323,7 +3303,7 @@ def update_brightness():
         current_brightness = brightness
 
         print(
-            f"Helligkeit auf {brightness}% gesetzt"
+            f"Brightness set to {brightness}%"
         )
 
 
@@ -3416,7 +3396,7 @@ def check_delays():
             bus.get("zeit", "")
         ).lower()
 
-        # Verspätung ignorieren wenn bereits NOW
+        # Ignore delay if already NOW
         if (
             "sofort" in zeit
             or "jetzt" in zeit
@@ -3459,7 +3439,7 @@ def master_render_loop():
         update_brightness()
         needs_redraw = False
 
-        # RELOAD-BALKEN
+        # RELOAD-BAR
         if current_time >= next_reload_pixel_time:
             reload_progress -= 1
             if reload_progress < 0:
@@ -3481,18 +3461,18 @@ def master_render_loop():
                 if messages:
                     max_departures = 3
 
-                # Platz für Linienanzeige ermitteln (34 Pixel)
+                # Determine space for line display
                 line_pixel_space = config.WIDTH - (5 * config.CHAR_WIDTH)
 
                 for i, bus in enumerate(bus_data[:max_departures]):
-                    # Linien-Scrollen (FIX: Exakt an UI-Breite angepasst)
+                    # Line scrolling
                     line = normalize(bus.get("linie", ""))
                     if get_text_width(line) > line_pixel_space:
                         line_scroll_offset[i] += 1
                         if line_scroll_offset[i] >= len(line + "   "):
                             line_scroll_offset[i] = 0
 
-                    # Ziel-Scrollen
+                    # Destination Scrolling
                     if scroll_wait[i] > 0:
                         scroll_wait[i] -= 1
                     else:
@@ -3505,7 +3485,7 @@ def master_render_loop():
                         else:
                             scroll_offset[i] = 0
 
-        # INFO-MELDUNG SCROLLEN (FIX: Aus der Einrückung des Dep-Scrollings befreit)
+        # SCROLL FOR INFORMATION MESSAGE
         if current_time - last_message_scroll_time >= message_scroll_interval:
             last_message_scroll_time = current_time
 
@@ -3527,20 +3507,20 @@ def master_render_loop():
 
                 needs_redraw = True
 
-        # NORMALES BLINKEN
+        # NORMAL FLASHING
         if current_time - last_blink_time >= blink_interval:
             last_blink_time = current_time
             blink_state = not blink_state
             needs_redraw = True
 
-        # BLINKEN BEI KEINEN ABFAHRTEN
+        # FLASHING INDICATE NO TRAIN DEPARTURES
         if bus_data and bus_data[0].get("nodata"):
             if current_time - last_no_departures_blink >= no_data_blink_interval:
                 last_no_departures_blink = current_time
                 no_departures_blink = not no_departures_blink
                 needs_redraw = True
 
-        # ZEIT / MINUTEN WECHSEL
+        # TIME / MINUTE CHANGE
         if current_time - last_mode_time >= mode_interval:
             last_mode_time = current_time
 
@@ -3559,13 +3539,13 @@ def master_render_loop():
                 else:
                     update_display()
             except Exception as e:
-                print("Render Fehler:", repr(e))
+                print("Render Error:", repr(e))
                 time.sleep(1)
                 continue
 
         time.sleep(0.05)
 
-# TEXT NORMALISIEREN
+# NORMALIZE TEXT
 
 def normalize(text):
 
