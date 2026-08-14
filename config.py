@@ -14,8 +14,8 @@ DATA_SOURCE = "HVV"
 # OUTPUT
 # ==========================
 DISPLAY_MODE = "WINDOW"
-# "WINDOW" = PC Desktop Vorschau
-# "LED" = echte RGB LED Matrix über GPIO
+# "WINDOW" = PC Desktop Preview
+# "LED" = RGB LED Matrix via GPIO
 
 HVV_API_URL = "https://gti.geofox.de"
 
