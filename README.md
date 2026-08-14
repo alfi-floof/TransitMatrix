@@ -2,7 +2,7 @@
 ## README.md
 ### If you have Questions or Ideas contact Fluffy_Nardoragon@mail.de or [TransitMatrix/issues](https://github.com/alfi-floof/TransitMatrix.py/issues)
 
-TransitMatrix is a real-time public transit departure board built for 64x64 RGB LED matrices powered by a Raspberry Pi. It fetches live departure times, service disruptions, and delays from the HVV API displaying them on a 64x64 matrix display or a PC desktop preview window. Since the HVV API dosn't deliver ICE/IC Numbers, those get pulled from the DB Timetables API
+TransitMatrix is a real-time public transit departure board built for 64x64 RGB LED matrices powered by a Raspberry Pi. It fetches live departure times, service disruptions, and delays from the HVV API displaying them on a 64x64 matrix display or a PC desktop preview window. Since the HVV API dosn't deliver ICE/IC Numbers, those get pulled from the DB Timetables API.
 
 ### Required Hardware
 - Raspberry Pi (I'm using a Pi 4 4GB)
