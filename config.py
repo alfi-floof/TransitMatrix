@@ -30,7 +30,7 @@ DB_FCHG_CACHE_TIME = 30
 
 DATA_UPDATE = 20
 
-DEBUG = True
+DEBUG = False
 
 WIDTH = 64  # Changing this currently requires modifications in multiple parts of the code, as 64x64 is currently hard-coded in several places.
 HEIGHT = 64  # Changing this currently requires modifications in multiple parts of the code, as 64x64 is currently hard-coded in several places.
