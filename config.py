@@ -2,7 +2,7 @@
 # Contact Fluffy_Nardoragon@mail.de or https://github.com/alfi-floof/TransitMatrix/issues
 from enum import IntEnum
 # ==========================
-# EINSTELLUNGEN
+# SETTINGS
 # ==========================
 STATION_NAME = "Hamburg Hbf"
 STATION_ID = ""
@@ -11,7 +11,7 @@ DB_STATION_EVA = "8002548"
 DATA_SOURCE = "HVV"
 
 # ==========================
-# AUSGABE
+# OUTPUT
 # ==========================
 DISPLAY_MODE = "WINDOW"
 # "WINDOW" = PC Desktop Vorschau
@@ -42,12 +42,12 @@ CHAR_WIDTH = 6
 CHAR_HEIGHT = 7
 LINE_HEIGHT = 8
 
-DAY_BRIGHTNESS = 80      # tagsüber (0-100)
-NIGHT_BRIGHTNESS = 10    # nachts (0-100)
+DAY_BRIGHTNESS = 80      # at daytime (0-100)
+NIGHT_BRIGHTNESS = 10    # at nighttime (0-100)
 
 
-NIGHT_START = 21         # ab 21:00 dimmen
-NIGHT_END = 7            # bis 07:00
+NIGHT_START = 21         # Dim from 21:00
+NIGHT_END = 7            # until 07:00
 
 MONITORED_LINES = [ # Hard-coded lines for monitoring announcements
     "RE7",
@@ -62,7 +62,7 @@ ANNOUNCEMENT_LINE_CACHE_TIME = 3600  # Monitors the defined lines and checks cac
 
 
 # ==========================
-# FARBEN
+# Colors
 # ==========================
 class ColorCode(IntEnum):
     DEFAULT = 1
