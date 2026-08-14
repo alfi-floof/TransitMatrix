@@ -13,7 +13,7 @@ DATA_SOURCE = "HVV"
 # ==========================
 # AUSGABE
 # ==========================
-DISPLAY_MODE = "LED"
+DISPLAY_MODE = "WINDOW"
 # "WINDOW" = PC Desktop Vorschau
 # "LED" = echte RGB LED Matrix über GPIO
 
