@@ -4,6 +4,8 @@
 
 TransitMatrix is a real-time public transit departure board built for 64x64 RGB LED matrices powered by a Raspberry Pi. It fetches live departure times, service disruptions, and delays from the HVV API displaying them on a 64x64 matrix display or a PC desktop preview window. Since the HVV API dosn't deliver ICE/IC Numbers, those get pulled from the DB Timetables API.
 
+<img width="500" alt="Example" src="https://github.com/user-attachments/assets/75806ce8-7b41-4d71-af4d-e9810af08edb" />
+
 ### Required Hardware
 - Raspberry Pi (I'm using a Pi 4 4GB)
 - A LED Matrix compatible with the RPi (I'm using a [SEENGREAT RGB Matrix P3.0 64x64](https://seengreat.com/wiki/74/rgb-matrix-p3-0-64x64))
