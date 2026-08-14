@@ -1598,11 +1598,11 @@ def db_api_get(path):
     url = base_url + clean_path
 
     client_id = str(
-        getattr(credentials, "DB_CLIENT_ID", "")
+        getattr(credentials, "DB_TIMETABLES_CLIENT_ID", "")
     ).strip()
 
     api_key = str(
-        getattr(credentials, "DB_API_KEY", "")
+        getattr(credentials, "DB_TIMETABLES_API_KEY", "")
     ).strip()
 
     if not client_id or not api_key:
@@ -2657,15 +2657,7 @@ def get_announcements(departures=None):
         + "/gti/public/getAnnouncements"
     )
 
-    # Also include lines currently appearing in departures.
-    if departures:
-        for departure in departures:
-            line = departure.get("linie")
-
-            if line:
-                announcement_lines.add(str(line).strip())
-
-    payload = {
+    payload = {f
         "language": "de",
         "version": 63,
         "names": sorted(announcement_lines),
@@ -2863,16 +2855,20 @@ def has_line_announcement(bus):
 def update_announcement_line_cache(departures):
     now = time.time()
 
+    configured_lines = {
+        normalize(str(line).strip())
+        for line in config.MONITORED_LINES
+        if str(line).strip()
+    }
+
     with announcement_line_cache_lock:
 
         # Always keep configured lines
-        for line in config.MONITORED_LINES:
-            line = normalize(str(line).strip())
+        for line in configured_lines:
+            announcement_line_cache[line] = now
 
-            if line:
-                announcement_line_cache[line] = now
-
-        # Add currently seen departure lines
+        # Add or refresh lines currently appearing
+        # in the departure list.
         for departure in departures or []:
             line = departure.get("linie")
 
@@ -2882,15 +2878,14 @@ def update_announcement_line_cache(departures):
                 if line:
                     announcement_line_cache[line] = now
 
-        # Remove automatically discovered lines after 1 hour
+        # Remove automatically discovered lines
+        # after the configured cache lifetime.
         expired = [
             line
-            for line, timestamp in announcement_line_cache.items()
+            for line, timestamp
+            in announcement_line_cache.items()
             if (
-                line not in [
-                    normalize(str(x).strip())
-                    for x in config.MONITORED_LINES
-                ]
+                line not in configured_lines
                 and now - timestamp > ANNOUNCEMENT_LINE_CACHE_TIME
             )
         ]
