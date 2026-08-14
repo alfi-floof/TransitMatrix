@@ -49,7 +49,7 @@ NIGHT_BRIGHTNESS = 10    # nachts (0-100)
 NIGHT_START = 21         # ab 21:00 dimmen
 NIGHT_END = 7            # bis 07:00
 
-MONITORED_LINES = [
+MONITORED_LINES = [ # Hard-coded lines for monitoring announcements
     "RE7",
     "RE70",
     "782-AK",
@@ -57,7 +57,9 @@ MONITORED_LINES = [
     "X95",
     "6502",
 ]
-# Hard-coded lines for monitoring announcements
+
+ANNOUNCEMENT_LINE_CACHE_TIME = 3600  # Monitors the defined lines and checks cached departures for those lines, including announcements affecting them for up to (3600 sec = 1 hour) ahead.
+
 
 # ==========================
 # FARBEN

@@ -78,7 +78,6 @@ db_cache_lock = threading.Lock()
 # Announcement line cache
 announcement_line_cache = {}
 announcement_line_cache_lock = threading.Lock()
-ANNOUNCEMENT_LINE_CACHE_TIME = 3600  # 1 hour
 
 station_names = []
 
@@ -360,7 +359,7 @@ def print_terminal(data):
 
     subprocess.run("cls" if os.name == "nt" else "clear", shell=True)
 
-    print("="*80)
+    print("="*67)
 
     print(
         f"{'LINIE':<8}"
@@ -370,7 +369,7 @@ def print_terminal(data):
         f"{'DELAY':<8}"
     )
 
-    print("="*80)
+    print("="*67)
 
     for bus in data:
 
@@ -386,7 +385,7 @@ def print_terminal(data):
 ): <8}"
         )
 
-    print("="*80)
+    print("="*67)
 
 def remove_duplicates(data):
 
@@ -2886,7 +2885,7 @@ def update_announcement_line_cache(departures):
             in announcement_line_cache.items()
             if (
                 line not in configured_lines
-                and now - timestamp > ANNOUNCEMENT_LINE_CACHE_TIME
+                and now - timestamp > config.ANNOUNCEMENT_LINE_CACHE_TIME
             )
         ]
 
