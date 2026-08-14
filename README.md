@@ -26,12 +26,12 @@ cd TransitMatrix
 ```Bash
 python -m pip install -r requirements.txt
 ```
-### 3. Rename credentials.py.example to credentials.py
+### 3. Rename ``credentials.py.example`` to ``credentials.py``
 Linux/Unix: ```mv credentials.py.example credentials.py```
 Windows: ```ren credentials.py.example credentials.py```
 
 
-### 4. Add Credentials to credentials.py
+### 4. Add Credentials to ``credentials.py``
 
 ```python
 #HVV GeoFox API
