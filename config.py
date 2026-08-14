@@ -4,9 +4,9 @@ from enum import IntEnum
 # ==========================
 # EINSTELLUNGEN
 # ==========================
-STATION_NAME = "Timmaspe Ortsmitte"
+STATION_NAME = "Hamburg Hbf"
 STATION_ID = ""
-DB_STATION_EVA = STATION_ID
+DB_STATION_EVA = "8002548"
 
 DATA_SOURCE = "HVV"
 
@@ -57,6 +57,7 @@ MONITORED_LINES = [
     "X95",
     "6502",
 ]
+# Hard-coded lines for monitoring announcements
 
 # ==========================
 # FARBEN
