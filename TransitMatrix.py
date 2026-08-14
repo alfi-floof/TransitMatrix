@@ -2657,7 +2657,7 @@ def get_announcements(departures=None):
         + "/gti/public/getAnnouncements"
     )
 
-    payload = {f
+    payload = {
         "language": "de",
         "version": 63,
         "names": sorted(announcement_lines),
