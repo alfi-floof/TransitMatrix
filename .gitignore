@@ -784,5 +784,6 @@ credentials.py
 __pycache__/
 BackUp/
 db_timetable*.xml
+config.py
 *.pyc
 .env

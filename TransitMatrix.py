@@ -701,7 +701,6 @@ def is_line(text):
 
 DB_TIMETABLE_PATTERN = "db_timetable_*.xml"
 
-
 def cleanup_db_timetable_files():
     try:
         # Attempt to use __file__ first (works when run as a standard script)
@@ -1239,9 +1238,36 @@ def lookup_db_train_by_time(
 
     return result
 
+def check_station_defined():
+    global data_status
+
+    invalid_placeholders = {"", "YOUR_STATION_ID", "YOUR_STATION_NAME", "NONE", "0"}
+
+    # Safely retrieve values from config
+    station_id = getattr(config, "STATION_ID", None)
+    station_name = getattr(config, "STATION_NAME", None)
+
+    # Sanitize inputs
+    id_str = str(station_id).strip().upper() if station_id is not None else ""
+    name_str = str(station_name).strip().upper() if station_name is not None else ""
+
+    # Determine validity
+    has_valid_id = bool(id_str) and id_str not in invalid_placeholders
+    has_valid_name = bool(name_str) and name_str not in invalid_placeholders
+
+    # Valid if EITHER station_id OR station_name (or both) is configured
+    if has_valid_id or has_valid_name:
+        return True
+
+    data_status = "NO_STATION"
+    return False
 
 def get_hvv_data():
-    """Load departures from the HVV Geofox API and cross-reference with DB IRIS for ICE/DB trains."""
+    global data_status
+    if not check_station_defined():
+        data_status = "NO_STATION"
+        return [{"linie": "", "ziel": "NO STATION", "plan": "", "zeit": "", "nodata": True}]
+
     url = config.HVV_API_URL.rstrip("/") + "/gti/public/departureList"
     now = datetime.now()
     station_id = str(config.STATION_ID).strip()
@@ -2882,48 +2908,42 @@ def update_announcement_line_cache(departures):
             del announcement_line_cache[line]
 
 def draw_no_departures(matrix):
-
     global no_departures_blink
     global data_status
 
     if not no_departures_blink:
         return
 
-    if data_status == "OFFLINE":
-
+    # Check if any bus data target contains NO STATION
+    if data_status == "NO_STATION" or (bus_data and bus_data[0].get("ziel") == "NO STATION"):
+        lines = [
+            "STATION",
+            "NICHT",
+            "DEFINIERT",
+            "",
+            "CONFIG",
+            "PRÜFEN"
+        ]
+    elif data_status == "OFFLINE":
         lines = [
             "KEINE",
             "VERBINDUNG"
         ]
-
     else:
-
         lines = [
             "KEINE",
             "ABFAHRTEN",
             "GEPLANT"
         ]
 
-
-    total_height = len(lines) * config.CHAR_HEIGHT + (len(lines)-1) * 4
-
+    total_height = len(lines) * config.CHAR_HEIGHT + (len(lines) - 1) * 4
     start_y = (config.HEIGHT - total_height) // 2
 
-
     for i, text in enumerate(lines):
-
         width = len(text) * config.CHAR_WIDTH
-
         x = (config.WIDTH - width) // 2
-
         y = start_y + i * (config.CHAR_HEIGHT + 4)
-
-        draw_text(
-            matrix,
-            x,
-            y,
-            text
-        )
+        draw_text(matrix, x, y, text)
 
 def get_message_text():
 
@@ -3029,33 +3049,22 @@ def draw_message(matrix):
 # DISPLAY
 
 def draw_reload_bar(matrix):
-
     global reload_progress
     global data_status
 
-    # delete last line
+    # Clear bottom row
     for x in range(config.WIDTH):
-        set_pixel(
-            matrix,
-            x,
-            config.HEIGHT - 1,
-            0
-        )
+        set_pixel(matrix, x, config.HEIGHT - 1, 0)
 
-    # Color depends on connection status
-    if data_status == "OFFLINE":
+    # Set red for any error status, green for normal operation
+    if data_status != "OK":
         bar_color = config.ColorCode.DELAY
     else:
         bar_color = config.ColorCode.OK
 
-    # Progress bar
+    # Draw progress bar
     for x in range(reload_progress):
-        set_pixel(
-            matrix,
-            x,
-            config.HEIGHT - 1,
-            bar_color
-        )
+        set_pixel(matrix, x, config.HEIGHT - 1, bar_color)
 
 def update_display():
     matrix = create_matrix()
@@ -3071,12 +3080,12 @@ def update_display():
             normalize(station_names[0])
         )
 
+    # Check if the first bus entry contains an error/no data flag
     if bus_data and bus_data[0].get("nodata"):
         draw_no_departures(matrix)
     else:
         max_departures = 3 if show_station_header else 4
 
-        #If there are notifications, ALWAYS limit to 3.
         if messages:
             max_departures = 3
 
@@ -3090,10 +3099,8 @@ def update_display():
         if messages:
             draw_message(matrix)
 
-    # always show
     draw_reload_bar(matrix)
     show_matrix(matrix)
-# DATA
 
 def update_data():
     global bus_data
@@ -3109,10 +3116,19 @@ def update_data():
         print("Loading departures...")
         data = []
 
+        # Replace the try/except inside update_data() with this:
         try:
             if config.DATA_SOURCE == "HVV":
                 data = get_hvv_data()
-                data_status = "OK"
+
+                # Check if the returned data indicates an error state
+                if data and data[0].get("nodata"):
+                    if data[0].get("ziel") == "NO STATION":
+                        data_status = "NO_STATION"
+                    else:
+                        data_status = "OFFLINE"
+                else:
+                    data_status = "OK"
 
         except Exception as e:
             print("ERROR LOADING DATA:", repr(e))

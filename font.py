@@ -611,5 +611,5 @@ FONT.update({
 
 })
 if __name__ == "__main__":
-    print("This file only contains ont definitions for TransitMatrix.")
+    print("This file only contains font definitions for TransitMatrix.")
     print("To start TransitMatrix, run TransitMatrix.py.")
