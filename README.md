@@ -9,7 +9,7 @@ TransitMatrix is a real-time public transit departure board built for 64x64 RGB 
 ### Required Hardware
 - Raspberry Pi (I'm using a Pi 4 4GB)
 - A LED Matrix compatible with the RPi (I'm using a [SEENGREAT RGB Matrix P3.0 64x64](https://seengreat.com/wiki/74/rgb-matrix-p3-0-64x64))
-  - You can use a Adafruit RGB Matrix Bonnet, i wired the Display straight to the GPIO Pins of my Pi. **Using a different display or connection method will require code changes!**
+  - You can use a Adafruit RGB Matrix Bonnet, i wired the Display straight to the GPIO Pins of my Pi. **Using a different display or connection method will require Config Changes, See Step 5!**
 - 5V 3A+ power supply (Check your Panel)
 
 ### Required APIs 
