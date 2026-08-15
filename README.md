@@ -34,7 +34,6 @@ Windows: ```ren credentials.py.example credentials.py```
 
 
 ### 4. Add Credentials to ``credentials.py``
-
 ```python
 #HVV GeoFox API
 HVV_API_USER = ""
@@ -45,9 +44,20 @@ DB_CLIENT_ID = ""
 DB_API_KEY = ""
 ```
 
-### 4. Launch TransitMatrix
-To start the display application, make sure you have adjused the ``config.py`` to your liking, then start it. Keep in mind the LED Mode needs root Access for the GPIO.
+### 5. Setup the LED Matrix
+Depending on your LED Matrix you will need to adjust these Settings:
+```python
+    options.rows = 64
+    options.cols = 64
+    options.chain_length = 1
+    options.parallel = 1
 
+    options.hardware_mapping = "regular"
+    options.gpio_slowdown = 3
+```
+
+### 6. Launch TransitMatrix
+To start the display application, make sure you have adjused the ``config.py`` to your liking, then start it. Keep in mind the LED Mode needs root Access for the GPIO.
 ``python TransitMatrix.py
 /
 sudo python TransitMatrix.py``
