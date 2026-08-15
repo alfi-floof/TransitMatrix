@@ -29,8 +29,9 @@ cd TransitMatrix
 python -m pip install -r requirements.txt
 ```
 ### 3. Rename ``credentials.py.example`` to ``credentials.py``
-Linux/Unix: ```mv credentials.py.example credentials.py```
-Windows: ```ren credentials.py.example credentials.py```
+- Linux/Unix: ``mv credentials.py.example credentials.py``
+- Windows CMD: ``ren credentials.py.example credentials.py``
+- Windows Powershell: ``Rename-Item credentials.py.example credentials.py``
 
 
 ### 4. Add Credentials to ``credentials.py``
