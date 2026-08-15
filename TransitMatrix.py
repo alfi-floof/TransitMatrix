@@ -1279,7 +1279,7 @@ def get_hvv_data():
         "station": {"id": station_id, "name": station_name, "type": "STATION"},
         "time": {"date": now.strftime("%d.%m.%Y"), "time": now.strftime("%H:%M")},
         "maxList": 10,
-        "maxTimeOffset": 720,
+        "maxTimeOffset": 1440,
         "useRealtime": True,
         "full": True,
         "showBroadcastRelevant": True
