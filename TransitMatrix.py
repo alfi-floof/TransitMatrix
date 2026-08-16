@@ -1542,7 +1542,7 @@ def lookup_db_train_without_number(
     if result is None:
 
         print(
-            f"DB Plan: No {category}-Hit forr "
+            f"DB Plan: No {category}-Hit for "
             f"{planned_departure.strftime('%H:%M')}"
         )
 
@@ -2734,7 +2734,7 @@ def get_announcements(departures=None):
                     {
                         "id": f"HTTP_{e.code}",
                         "description": (
-                            f"HTTP FEHLER {e.code} - "
+                            f"HTTP ERROR {e.code} - "
                             f"{detail_text}"
                         ),
                         "locations": []
@@ -2747,7 +2747,7 @@ def get_announcements(departures=None):
     except urllib.error.URLError as e:
 
         print(
-            "Announcements Networkfehler:",
+            "Announcements Networkerror",
             repr(e)
         )
 
