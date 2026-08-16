@@ -786,7 +786,5 @@ BackUp/
 db_timetable*.xml
 <<<<<<< HEAD
 config.py
-=======
->>>>>>> origin/master
 *.pyc
 .env
