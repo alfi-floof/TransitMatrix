@@ -207,8 +207,8 @@ def disable_rounded_corners(tk_window):
 
 def cycle_window_title():
     titles = [
+        "github.com/alfi-floof/",
         "TransitMatrix",
-        "github.com/alfi-floof",
         "Fluffy_Nardoragon@mail.de",
         "TransitMatrix"
     ]
@@ -1264,27 +1264,49 @@ def check_station_defined():
 
 def get_hvv_data():
     global data_status
+
     if not check_station_defined():
         data_status = "NO_STATION"
-        return [{"linie": "", "ziel": "NO STATION", "plan": "", "zeit": "", "nodata": True}]
+        return [{
+            "linie": "",
+            "ziel": "NO STATION",
+            "plan": "",
+            "zeit": "",
+            "nodata": True
+        }]
 
     url = config.HVV_API_URL.rstrip("/") + "/gti/public/departureList"
+
     now = datetime.now()
+
     station_id = str(config.STATION_ID).strip()
     station_name = str(config.STATION_NAME).strip()
 
     payload = {
         "language": "de",
         "version": 63,
-        "station": {"id": station_id, "name": station_name, "type": "STATION"},
-        "time": {"date": now.strftime("%d.%m.%Y"), "time": now.strftime("%H:%M")},
+        "station": {
+            "id": station_id,
+            "name": station_name,
+            "type": "STATION"
+        },
+        "time": {
+            "date": now.strftime("%d.%m.%Y"),
+            "time": now.strftime("%H:%M")
+        },
         "maxList": 10,
         "maxTimeOffset": 1440,
         "useRealtime": True,
         "full": True,
         "showBroadcastRelevant": True
     }
-    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+
+    body = json.dumps(
+        payload,
+        separators=(",", ":"),
+        ensure_ascii=False
+    )
+
     headers = {
         "geofox-auth-user": credentials.HVV_API_USER,
         "geofox-auth-signature": get_signature(body),
@@ -1293,112 +1315,343 @@ def get_hvv_data():
         "Accept": "application/json",
         "User-Agent": "TransitMatrix"
     }
-    request = urllib.request.Request(url, data=body.encode("utf-8"), headers=headers, method="POST")
+
+    request = urllib.request.Request(
+        url,
+        data=body.encode("utf-8"),
+        headers=headers,
+        method="POST"
+    )
 
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8", errors="replace"))
+        with urllib.request.urlopen(
+            request,
+            timeout=10
+        ) as response:
+
+            data = json.loads(
+                response.read().decode(
+                    "utf-8",
+                    errors="replace"
+                )
+            )
+
     except Exception as e:
-        print(f"HVV API Error: {e}")
-        return [{"linie": "", "ziel": "API ERROR", "plan": "", "zeit": "", "nodata": True}]
+
+        print(
+            f"HVV API Error: {e}"
+        )
+
+        data_status = "OFFLINE"
+
+        return [{
+            "linie": "",
+            "ziel": "API ERROR",
+            "plan": "",
+            "zeit": "",
+            "nodata": True
+        }]
 
     result = []
-    for dep in data.get("departures", []):
-        # DELAY
-        delay_seconds = dep.get("delay")
-        if delay_seconds is not None:
-            try:
-                delay = int(int(delay_seconds) / 60)
-            except (TypeError, ValueError):
-                delay = 0
-            delay_found = True
-        else:
-            delay = 0
-            delay_found = False
 
-        # TIME OFFSET (Realtime offset from now)
+    raw_departures = data.get(
+        "departures",
+        []
+    )
+
+    print(
+        f"HVV returned "
+        f"{len(raw_departures)} departures"
+    )
+
+    for index, dep in enumerate(raw_departures):
+
+        # ==================================================
+        # BASIC DEBUG
+        # ==================================================
+
+        line = dep.get("line") or {}
+
+        original_line_name = str(
+            line.get("name", "")
+        ).strip()
+
+        original_direction = str(
+            line.get("direction", "")
+        ).strip()
+
         try:
-            offset = int(dep.get("timeOffset", 0))
+            offset = int(
+                dep.get("timeOffset", 0)
+            )
         except (TypeError, ValueError):
             offset = 0
 
-        # Filter out trains that departed more than 1 minute ago
-        if offset < -1 and not dep.get("cancelled"):
+        print(
+            f"HVV [{index}] "
+            f"{original_line_name:<10} "
+            f"{original_direction:<30} "
+            f"offset={offset}"
+        )
+
+        # ==================================================
+        # DELAY
+        # ==================================================
+
+        delay_seconds = dep.get("delay")
+
+        if delay_seconds is not None:
+
+            try:
+                delay = int(
+                    int(delay_seconds) / 60
+                )
+            except (TypeError, ValueError):
+                delay = 0
+
+            delay_found = True
+
+        else:
+
+            delay = 0
+            delay_found = False
+
+        # ==================================================
+        # REMOVE ONLY DEPARTURES THAT ALREADY LEFT
+        # ==================================================
+
+        if (
+            offset < -1
+            and not dep.get("cancelled")
+        ):
+            print(
+                f"SKIP [{index}] "
+                f"{original_line_name} "
+                f"because it already departed"
+            )
             continue
 
-        target_time = now + timedelta(minutes=offset)
-        planned_departure = target_time - timedelta(minutes=delay)
-        plan_time = planned_departure.strftime("%H:%M")
+        # ==================================================
+        # TIMES
+        # ==================================================
 
-        if offset <= 0:
-            zeit = "sofort"
-        else:
-            zeit = f"in {offset} Min"
+        target_time = (
+            now +
+            timedelta(minutes=offset)
+        )
+
+        planned_departure = (
+            target_time -
+            timedelta(minutes=delay)
+        )
+
+        plan_time = planned_departure.strftime(
+            "%H:%M"
+        )
+
         if dep.get("cancelled"):
+
             zeit = "fällt aus"
 
-        # LINE EXTRACT & DIRECTION
-        line = dep.get("line", {})
-        line_name = str(line.get("name", "")).strip()
-        line_direction = str(line.get("direction", "")).strip()
+        elif offset <= 0:
 
-        # Extract Category & Train Number (handles "ICE 582", "ICE582", "RE 80", etc.)
-        match = re.match(r"^([A-Za-z]+)\s*(\d+)$", line_name)
-        if match:
-            category = match.group(1).upper()
-            train_number = match.group(2)
+            zeit = "sofort"
+
         else:
-            parts = line_name.split()
-            category = parts[0].upper() if parts else ""
-            train_number = parts[1] if len(parts) > 1 else ""
 
-        # ==========================================
-        # DB TIMETABLE CROSS-REFERENCE LOGIC
-        # ==========================================
+            zeit = f"in {offset} Min"
+
+        # ==================================================
+        # KEEP HVV LINE EXACTLY AS PROVIDED
+        # ==================================================
+
+        line_name = original_line_name
+
+        line_direction = original_direction
+
+        # ==================================================
+        # DETERMINE CATEGORY / NUMBER
+        # ==================================================
+
+        category = ""
+        train_number = ""
+
+        match = re.fullmatch(
+            r"([A-Za-zÄÖÜäöü]+)"
+            r"(?:\s*[- ]?\s*(\d+))?",
+            line_name
+        )
+
+        if match:
+
+            category = (
+                match.group(1)
+                .upper()
+                .strip()
+            )
+
+            train_number = (
+                match.group(2)
+                or ""
+            ).strip()
+
+        else:
+
+            parts = line_name.split()
+
+            if parts:
+
+                category = (
+                    parts[0]
+                    .upper()
+                    .strip()
+                )
+
+            if len(parts) >= 2:
+
+                possible_number = (
+                    parts[1]
+                    .strip()
+                )
+
+                if possible_number.isdigit():
+
+                    train_number = (
+                        possible_number
+                    )
+
+        # ==================================================
+        # DEBUG PARSING
+        # ==================================================
+
+        print(
+            f"  Parsed: "
+            f"line='{line_name}' "
+            f"category='{category}' "
+            f"number='{train_number}'"
+        )
+
+        # ==================================================
+        # DB LOOKUP
+        #
+        # ONLY long-distance trains.
+        #
+        # RS / RE / RB are NOT sent to DB.
+        # ==================================================
+
         db_categories = {
             "ICE",
             "IC",
             "EC",
             "ECE",
-            "RE",
-            "RB",
             "IRE",
             "FLX",
             "DPF"
         }
 
-        if category in db_categories and not train_number:
+        if (
+            category in db_categories
+            and not train_number
+            and not dep.get("cancelled")
+        ):
 
             try:
 
-                db_match = lookup_db_train_without_number(
-                    category=category,
-                    planned_departure=planned_departure,
-                    destination=line_direction
+                print(
+                    f"  DB lookup: "
+                    f"{category} "
+                    f"{planned_departure}"
+                )
+
+                db_match = (
+                    lookup_db_train_without_number(
+                        category=category,
+                        planned_departure=planned_departure,
+                        destination=line_direction
+                    )
                 )
 
                 if db_match:
+
+                    print(
+                        f"  DB result: "
+                        f"{db_match}"
+                    )
+
                     line_name = db_match
+
+                else:
+
+                    print(
+                        f"  DB result: "
+                        f"nothing found"
+                    )
 
             except Exception as e:
 
-                debug_print(
-                    f"DB lookup failed for "
-                    f"{category}: {e}"
+                print(
+                    f"  DB lookup error "
+                    f"for {category}: {e}"
                 )
+
+        # ==================================================
+        # NEVER DROP THE DEPARTURE
+        # ==================================================
+
         result.append({
-            "station": {"id": station_id, "name": station_name},
+            "station": {
+                "id": station_id,
+                "name": station_name
+            },
+
             "linie": line_name,
+
             "ziel": line_direction,
+
             "plan": plan_time,
+
             "zeit": zeit,
+
             "delay": delay,
+
             "delay_found": delay_found,
+
             "target_time": target_time
         })
 
-    # Sort final result chronologically by the true target realtime
-    result.sort(key=lambda x: x["target_time"])
+    # ======================================================
+    # SORT CHRONOLOGICALLY
+    # ======================================================
+
+    result.sort(
+        key=lambda x: x.get(
+            "target_time",
+            datetime.max
+        )
+    )
+
+    # ======================================================
+    # FINAL DEBUG
+    # ======================================================
+
+    print(
+        "\n=== FINAL HVV DEPARTURES ==="
+    )
+
+    for i, dep in enumerate(result):
+
+        print(
+            f"[{i}] "
+            f"{dep.get('linie', ''):<10} "
+            f"{dep.get('ziel', ''):<30} "
+            f"{dep.get('plan', ''):<6} "
+            f"{dep.get('zeit', '')}"
+        )
+
+    print(
+        "=== END FINAL HVV DEPARTURES ===\n"
+    )
+
     return result
 
 def lookup_db_train_without_number(
