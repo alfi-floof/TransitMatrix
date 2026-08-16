@@ -70,7 +70,6 @@ sudo python TransitMatrix.py``
 
 
 ## Questions, Feedback & Issues
-
-Have an idea for a feature or found a bug?
+Have a feature idea, feedback, or found a bug?
     Open an Issue: [TransitMatrix/issues](https://github.com/alfi-floof/TransitMatrix.py/issues)
     Email Contact: Fluffy_Nardoragon@mail.de
