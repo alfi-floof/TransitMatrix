@@ -6,7 +6,7 @@ from enum import IntEnum
 # ==========================
 STATION_NAME = ""
 STATION_ID = ""
-DB_STATION_EVA = ""
+DB_STATION_EVA = "" #EVA-ID / IBNR
 
 DATA_SOURCE = "HVV"
 
