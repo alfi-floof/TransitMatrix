@@ -57,7 +57,7 @@ Depending on your LED Matrix you will need to adjust these Settings:
     options.gpio_slowdown = 3
 ```
 
-### 7. Launch TransitMatrix
+### 6. Launch TransitMatrix
 To start the display application, make sure you have adjused the ``config.py`` to your liking, then start it. Keep in mind the LED Mode needs root Access for the GPIO.
 ``python TransitMatrix.py
 /
