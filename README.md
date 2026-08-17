@@ -28,18 +28,13 @@ cd TransitMatrix
 ```Bash
 python -m pip install -r requirements.txt
 ```
-### 3. Rename ``credentials.py.example`` to ``credentials.py``
-Linux/Unix: ```mv credentials.py.example credentials.py```
-Windows: ```ren credentials.py.example credentials.py```
-
-
-### 4. Add Credentials to ``credentials.py``
+### 3. Rename ``credentials.py.example`` to `
 - Linux/Unix: ``mv credentials.py.example credentials.py``
 - Windows CMD: ``ren credentials.py.example credentials.py``
 - Windows Powershell: ``Rename-Item credentials.py.example credentials.py``
 
 
-### 5. Add Credentials to ``credentials.py``
+### 4. Add Credentials to ``credentials.py``
 ```python
 # HVV GeoFox API
 HVV_API_USER = ""
@@ -50,7 +45,7 @@ DB_TIMETABLES_CLIENT_ID = ""
 DB_TIMETABLES_API_KEY = ""
 ```
 
-### 6. Setup the LED Matrix
+### 5. Setup the LED Matrix
 Depending on your LED Matrix you will need to adjust these Settings:
 ```python
     options.rows = 64
